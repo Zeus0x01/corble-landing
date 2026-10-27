@@ -19,3 +19,4 @@ data/
 .vercel
 uploads/
 uploads/
+.env
