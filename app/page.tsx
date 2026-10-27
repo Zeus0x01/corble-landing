@@ -48,6 +48,7 @@ function Nav() {
           <a href="#customers">Customers</a>
         </nav>
         <div className="nav-actions">
+          <a className="btn btn-ghost" href="/login">Client Portal</a>
           <a className="btn btn-lime" href="#contact">Start Free <span aria-hidden="true">→</span></a>
           <button
             className={`menu-btn${open ? ' open' : ''}`}
@@ -63,6 +64,7 @@ function Nav() {
           <a href="#how">How it works</a>
           <a href="#pricing">Pricing</a>
           <a href="#customers">Customers</a>
+          <a href="/login">Client Portal</a>
           <a href="#contact">Start Free →</a>
         </nav>
       </div>
@@ -113,7 +115,7 @@ function Hero() {
               </div>
               <div className="chart" aria-hidden="true">
                 {bars.map((h, i) => (
-                  <span key={i} style={{ '--h': `${h}%`, '--i': i }} />
+                  <span key={i} style={{ ['--h' as never]: `${h}%`, ['--i' as never]: i }} />
                 ))}
               </div>
               <div className="action-note">
@@ -202,7 +204,7 @@ function Features() {
         </div>
         <div className="features">
           {items.map((it, i) => (
-            <article key={it.t} className="fcard reveal" style={{ '--d': `${i * 90}ms` }}>
+            <article key={it.t} className="fcard reveal" style={{ ['--d' as never]: `${i * 90}ms` }}>
               <div className="ficon">{it.icon}</div>
               <h3>{it.t}</h3>
               <p>{it.d}</p>
@@ -215,7 +217,7 @@ function Features() {
 }
 
 function Workflow() {
-  const sectionRef = useRef(null);
+  const sectionRef = useRef<HTMLElement | null>(null);
   const [step, setStep] = useState(0);
   const [prog, setProg] = useState(0);
 
@@ -365,14 +367,14 @@ function Proof() {
         </div>
         <div className="stats" style={{ marginTop: '40px' }}>
           {stats.map((s, i) => (
-            <div key={s.l} className="stat reveal" data-tilt data-tilt-max="4" style={{ '--d': `${i * 80}ms` }}>
+            <div key={s.l} className="stat reveal" data-tilt data-tilt-max="4" style={{ ['--d' as never]: `${i * 80}ms` }}>
               <strong>{s.n}</strong><span>{s.l}</span>
             </div>
           ))}
         </div>
         <div className="testimonials" style={{ marginTop: '18px' }}>
           {quotes.map((t, i) => (
-            <article key={t.n} className="tcard reveal" style={{ '--d': `${i * 110}ms` }}>
+            <article key={t.n} className="tcard reveal" style={{ ['--d' as never]: `${i * 110}ms` }}>
               <div className="stars" aria-hidden="true">★★★★★</div>
               <blockquote>{t.q}</blockquote>
               <div className="qavatar">
@@ -416,7 +418,7 @@ function Pricing() {
         </div>
         <div className="plans">
           {plans.map((p, i) => (
-            <article key={p.name} className={`plan reveal${p.featured ? ' featured' : ''}`} style={{ '--d': `${i * 110}ms` }}>
+            <article key={p.name} className={`plan reveal${p.featured ? ' featured' : ''}`} style={{ ['--d' as never]: `${i * 110}ms` }}>
               {p.featured && <span className="plan-badge">Most popular</span>}
               <h3>{p.name}</h3>
               <div className="price">{p.price} <small>{p.per}</small></div>
@@ -461,7 +463,7 @@ function FAQ() {
                   id={`faq-q-${i}`}
                   aria-expanded={open}
                   aria-controls={id}
-                  onClick={() => setOpenI(open ? false : i)}
+                  onClick={() => setOpenI(open ? -1 : i)}
                 >
                   {it.q}
                   <span className="chev" aria-hidden="true">
@@ -481,9 +483,9 @@ function FAQ() {
 function Contact() {
   const [state, setState] = useState('idle');
   const [form, setForm] = useState({ name: '', email: '', business: '', need: '', message: '' });
-  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => setForm({ ...form, [k]: e.target.value });
 
-  async function submit(e) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name.trim() || !form.email.includes('@')) {
       setState('error'); return;
@@ -625,7 +627,7 @@ function Footer() {
 
 export default function Page() {
   useEffect(() => {
-    const els = document.querySelectorAll('.reveal');
+    const els = document.querySelectorAll<Element>('.reveal');
     const io = new IntersectionObserver(
       (entries) => entries.forEach((en) => {
         if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); }
@@ -639,16 +641,16 @@ export default function Page() {
   useEffect(() => {
     if (!window.matchMedia('(pointer: fine)').matches) return;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    const targets = document.querySelectorAll('[data-tilt]');
-    const max = (el) => Number(el.dataset.tiltMax || 6);
-    const onMove = (e) => {
-      const el = e.currentTarget;
-      const r = el.getBoundingClientRect();
-      const x = (e.clientX - r.left) / r.width - 0.5;
-      const y = (e.clientY - r.top) / r.height - 0.5;
-      el.style.transform = `rotateX(${(-y * max(el)).toFixed(2)}deg) rotateY(${(x * max(el)).toFixed(2)}deg)`;
-    };
-    const onLeave = (e) => { e.currentTarget.style.transform = ''; };
+    const targets = document.querySelectorAll<HTMLElement>('[data-tilt]');
+    const max = (el: HTMLElement) => Number(el.dataset.tiltMax || 6);
+  const onMove = (e: MouseEvent) => {
+    const el = e.currentTarget as HTMLElement;
+    const r = el.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width - 0.5;
+    const y = (e.clientY - r.top) / r.height - 0.5;
+    el.style.transform = `rotateX(${(-y * max(el)).toFixed(2)}deg) rotateY(${(x * max(el)).toFixed(2)}deg)`;
+  };
+  const onLeave = (e: MouseEvent) => { (e.currentTarget as HTMLElement).style.transform = ''; };
     targets.forEach((el) => {
       el.addEventListener('mousemove', onMove, { passive: true });
       el.addEventListener('mouseleave', onLeave);
@@ -661,10 +663,10 @@ export default function Page() {
 
   useEffect(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      document.querySelectorAll('.wordy .w').forEach((w) => w.classList.add('lit'));
+      document.querySelectorAll<HTMLElement>('.wordy .w').forEach((w) => w.classList.add('lit'));
       return;
     }
-    const words = document.querySelectorAll('.wordy .w');
+    const words = document.querySelectorAll<HTMLElement>('.wordy .w');
     let ticking = false;
     const onScroll = () => {
       if (ticking) return;
@@ -688,11 +690,14 @@ export default function Page() {
 
   useEffect(() => {
     const links = document.querySelectorAll('.nav-links a');
-    const secs = [...links].map((a) => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+    const secs = [...links]
+      .map((a) => document.querySelector(a.getAttribute('href') ?? ''))
+      .filter((s): s is Element => s !== null);
     const io = new IntersectionObserver((entries) => {
       entries.forEach((en) => {
         if (en.isIntersecting) {
-          links.forEach((l) => l.classList.toggle('active', l.getAttribute('href') === `#${en.target.id}`));
+          const id = en.target.id;
+          links.forEach((l: Element) => l.classList.toggle('active', l.getAttribute('href') === `#${id}`));
         }
       });
     }, { rootMargin: '-45% 0px -50% 0px' });
@@ -702,7 +707,7 @@ export default function Page() {
 
   useEffect(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    const els = document.querySelectorAll('[data-parallax]');
+    const els = document.querySelectorAll<HTMLElement>('[data-parallax]');
     let ticking = false;
     const onScroll = () => {
       if (ticking) return;
