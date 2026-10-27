@@ -10,11 +10,13 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
   const { q } = await searchParams;
   const query = (q ?? '').trim();
 
-  const users = await db.user.findMany({
-    where: query ? { OR: [{ name: { contains: query, mode: 'insensitive' } }, { email: { contains: query, mode: 'insensitive' } }] } : {},
-    orderBy: { createdAt: 'asc' },
-  });
-  const openByUser = await db.task.groupBy({ by: ['assigneeId'], _count: { _all: true }, where: { status: { not: 'DONE' } } });
+  const [users, openByUser] = await Promise.all([
+    db.user.findMany({
+      where: query ? { OR: [{ name: { contains: query, mode: 'insensitive' } }, { email: { contains: query, mode: 'insensitive' } }] } : {},
+      orderBy: { createdAt: 'asc' },
+    }),
+    db.task.groupBy({ by: ['assigneeId'], _count: { _all: true }, where: { status: { not: 'DONE' } } }),
+  ]);
   const openMap = new Map(openByUser.map((o) => [o.assigneeId, o._count._all]));
 
   return (

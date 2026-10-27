@@ -30,12 +30,14 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
   const { q } = await searchParams;
   const query = (q ?? '').trim();
 
-  const leads = await db.lead.findMany({
-    where: query ? { OR: [{ name: { contains: query, mode: 'insensitive' } }, { contactPerson: { contains: query, mode: 'insensitive' } }, { service: { contains: query, mode: 'insensitive' } }] } : {},
-    orderBy: [{ nextFollowUp: { sort: 'asc', nulls: 'last' } }, { createdAt: 'desc' }],
-    include: { owner: { select: { id: true, name: true } }, _count: { select: { projects: true } } },
-  });
-  const owners = await db.user.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } });
+  const [leads, owners] = await Promise.all([
+    db.lead.findMany({
+      where: query ? { OR: [{ name: { contains: query, mode: 'insensitive' } }, { contactPerson: { contains: query, mode: 'insensitive' } }, { service: { contains: query, mode: 'insensitive' } }] } : {},
+      orderBy: [{ nextFollowUp: { sort: 'asc', nulls: 'last' } }, { createdAt: 'desc' }],
+      include: { owner: { select: { id: true, name: true } }, _count: { select: { projects: true } } },
+    }),
+    db.user.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+  ]);
 
   return (
     <>

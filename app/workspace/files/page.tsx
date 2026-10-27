@@ -19,12 +19,14 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
   const session = await auth();
   const userId = session!.user.id;
 
-  const files = await db.fileAsset.findMany({
-    where: query ? { name: { contains: query, mode: 'insensitive' } } : {},
-    orderBy: { createdAt: 'desc' },
-    include: { project: { select: { name: true } } },
-  });
-  const projects = await db.project.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } });
+  const [files, projects] = await Promise.all([
+    db.fileAsset.findMany({
+      where: query ? { name: { contains: query, mode: 'insensitive' } } : {},
+      orderBy: { createdAt: 'desc' },
+      include: { project: { select: { name: true } } },
+    }),
+    db.project.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+  ]);
 
   return (
     <>

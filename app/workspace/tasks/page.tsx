@@ -33,17 +33,17 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const query = (sp.q ?? '').trim();
   const statusFilter = STATUS.includes(sp.status as never) ? (sp.status as (typeof STATUS)[number]) : null;
 
-  const tasks = await db.task.findMany({
-    where: {
-      AND: [
-        query ? { title: { contains: query, mode: 'insensitive' } } : {},
-        statusFilter ? { status: statusFilter } : {},
-      ],
-    },
-    orderBy: [{ status: 'asc' }, { dueDate: { sort: 'asc', nulls: 'last' } }],
-    include: { project: { select: { name: true } }, assignee: { select: { name: true } } },
-  });
-  const [projects, users] = await Promise.all([
+  const [tasks, projects, users] = await Promise.all([
+    db.task.findMany({
+      where: {
+        AND: [
+          query ? { title: { contains: query, mode: 'insensitive' } } : {},
+          statusFilter ? { status: statusFilter } : {},
+        ],
+      },
+      orderBy: [{ status: 'asc' }, { dueDate: { sort: 'asc', nulls: 'last' } }],
+      include: { project: { select: { name: true } }, assignee: { select: { name: true } } },
+    }),
     db.project.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     db.user.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
   ]);

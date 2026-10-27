@@ -48,6 +48,9 @@
 [data-ws] a, [data-ws] button { transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease; }
 
 .wsapp { display: grid; grid-template-columns: 235px minmax(0, 1fr); min-height: 100vh; }
+/* Keep the mobile drawer backdrop OUT of the grid flow at every width —
+   as a static child it would consume a grid cell and push the content column
+   below the fold. It only needs to exist (visually) while the drawer is open. */
 .sidebar-backdrop { position: fixed; inset: 0; background: rgba(2, 4, 11, 0.55); z-index: 29; display: none; pointer-events: none; }
 .sidebar-backdrop.show { display: block; pointer-events: auto; }
 .wssidebar { border-right: 1px solid var(--line); padding: 24px 15px; display: flex; flex-direction: column; background: var(--sidebar); position: sticky; top: 0; height: 100vh; overflow-y: auto; }

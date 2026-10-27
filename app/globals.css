@@ -20,7 +20,9 @@
 
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; scroll-padding-top: 108px; }
-body { padding-top: 104px; }
+/* Landing-only: the fixed landing header needs this offset; it must not leak
+   into the workspace/login, which have their own full-page layouts. */
+body:has(.topbar) { padding-top: 104px; }
 body {
   margin: 0;
   background:
@@ -604,7 +606,7 @@ footer { border-top: 1px solid var(--border); background: var(--bg); }
 
 /* ---------- mobile & touch tuning (scroll/animations) ---------- */
 @media (max-width: 760px) {
-  body { padding-top: 92px; }
+  body:has(.topbar) { padding-top: 92px; }
   .topbar { top: 10px; }
   .topbar { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
   .aurora { filter: blur(40px); opacity: 0.42; }
