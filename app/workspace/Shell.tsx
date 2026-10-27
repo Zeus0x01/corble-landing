@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, type ReactNode } fro
 import { usePathname } from 'next/navigation';
 import { saveMyTheme } from '@/lib/actions';
 import Topbar from './Topbar';
+import Sidebar from '@/components/Sidebar';
 
 type ToastFn = (message: string, kind?: 'ok' | 'err') => void;
 const ToastCtx = createContext<ToastFn>(() => {});
@@ -54,7 +55,7 @@ export default function Shell({ children, user, companyName, currency }: ShellPr
   return (
     <ToastCtx.Provider value={toast}>
       <div className="wsapp" id="wsapp">
-        {children}
+        <Sidebar role={user.role} />
         <div className="sidebar-backdrop" id="sidebarBackdrop" aria-hidden="true" />
         <div style={{ position: 'relative', minWidth: 0, display: 'grid' }}>
           <Topbar pathname={pathname} user={user} companyName={companyName} currency={currency} onToggleTheme={toggleTheme} />

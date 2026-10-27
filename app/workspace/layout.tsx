@@ -3,7 +3,6 @@ import { redirect } from 'next/navigation';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
 import Shell from './Shell';
-import Sidebar from '@/components/Sidebar';
 
 export default async function WorkspaceLayout({ children }: { children: ReactNode }) {
   const session = await auth();
@@ -22,7 +21,6 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
       companyName={settings.companyName}
       currency={settings.currency}
     >
-      <Sidebar role={user.role} />
       {children}
     </Shell>
   );
