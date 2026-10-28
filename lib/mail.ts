@@ -22,7 +22,7 @@ export async function sendEmail({ to, subject, html, text }: SendArgs): Promise<
 
   if (!key) {
     console.info('[mail] RESEND_API_KEY not set — skipping email to', to, '·', subject);
-    return { ok: false, error: 'Email not configured' };
+    return { ok: false, error: 'Email not configured (RESEND_API_KEY missing)' };
   }
 
   try {
@@ -43,8 +43,18 @@ export async function sendEmail({ to, subject, html, text }: SendArgs): Promise<
 
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      console.error('[mail] Resend error', res.status, body);
-      return { ok: false, error: `Mail provider error ${res.status}` };
+      let hint = '';
+      try {
+        const parsed = JSON.parse(body) as { message?: string };
+        hint = parsed.message ?? '';
+      } catch { /* non-JSON body */ }
+      if (res.status === 403 && /testing/i.test(hint)) {
+        hint =
+          'Resend can only send to the account owner address until you verify EMAIL_FROM. ' +
+          'Verify a domain (e.g. corble.net) at resend.com/domains and set EMAIL_FROM accordingly.';
+      }
+      console.error('[mail] Resend error', res.status, hint || body, { from, to, subject });
+      return { ok: false, error: hint ? `Mail provider error ${res.status}: ${hint}` : `Mail provider error ${res.status}` };
     }
     return { ok: true };
   } catch (e) {
@@ -92,8 +102,8 @@ export async function notifyTaskAssigned(opts: {
 
 function escapeHtml(s: string) {
   return s
-    .replace(/&/g, '&')
-    .replace(/</g, '<')
-    .replace(/>/g, '>')
-    .replace(/"/g, '"');
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }

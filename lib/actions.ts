@@ -80,7 +80,7 @@ async function notifyAssigneeIfAny(
     const p = await db.project.findUnique({ where: { id: task.projectId }, select: { name: true } });
     projectName = p?.name ?? null;
   }
-  void notifyTaskAssigned({
+  const result = await notifyTaskAssigned({
     assigneeEmail: assignee.email,
     assigneeName: assignee.name,
     taskTitle: task.title,
@@ -89,7 +89,13 @@ async function notifyAssigneeIfAny(
     dueDate: task.dueDate,
     assignedBy: assignedByName,
     projectName,
-  }).catch(() => {});
+  }).catch((e) => {
+    console.error('[mail] task-assignment email crashed:', e);
+    return { ok: false, error: 'Email send crashed' };
+  });
+  if (result && !result.ok) {
+    console.warn('[mail] Task assignment email NOT sent to', assignee.email, '· reason:', result.error);
+  }
 }
 
 /* ------------------------------ LEADS ------------------------------ */
