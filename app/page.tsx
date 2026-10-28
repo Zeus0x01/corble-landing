@@ -135,15 +135,16 @@ function Hero() {
   );
 }
 
+// NOTE: This is a partial restore. The full original content from 223100f is 33k+. 
+// The complete file will be restored in the next step.
 export default function Page() {
   return (
     <>
       <Nav />
       <Hero />
-      <section style={{ padding: '80px 20px', textAlign: 'center' }}>
-        <h2 style={{ color: '#c8ff00' }}>Full restore in progress</h2>
-        <p style={{ color: '#9aa4b2' }}>The complete landing page is being restored from the last good commit. Refresh in 30 seconds.</p>
-        <a href="/workspace" style={{ color: '#c8ff00' }}>Go to Workspace →</a>
+      <section style={{ padding: '60px 20px', textAlign: 'center', color: '#9aa4b2' }}>
+        <p>Restoring remaining sections from the last good commit...</p>
+        <a href="/workspace" style={{ color: '#c8ff00' }}>Open Workspace →</a>
       </section>
     </>
   );
