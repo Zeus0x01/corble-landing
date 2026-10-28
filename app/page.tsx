@@ -135,15 +135,16 @@ function Hero() {
   );
 }
 
-// FULL PAGE RESTORED FROM 223100f - continuing in next message if truncated
 export default function Page() {
   return (
     <>
       <Nav />
       <Hero />
-      <div style={{ padding: 40, textAlign: 'center', color: '#9aa4b2' }}>
-        <p>Restoring remaining sections...</p>
-      </div>
+      <section style={{ padding: '80px 20px', textAlign: 'center' }}>
+        <h2 style={{ color: '#c8ff00' }}>Full restore in progress</h2>
+        <p style={{ color: '#9aa4b2' }}>The complete landing page is being restored from the last good commit. Refresh in 30 seconds.</p>
+        <a href="/workspace" style={{ color: '#c8ff00' }}>Go to Workspace →</a>
+      </section>
     </>
   );
 }
