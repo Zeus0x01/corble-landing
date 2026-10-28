@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { signOut } from 'next-auth/react';
 
 type Props = {
@@ -19,6 +20,7 @@ const TITLES: Record<string, [string, string]> = {
   '/workspace/tasks': ['Tasks', 'Who does what, by when.'],
   '/workspace/finance': ['Finance', 'Invoices, payments, and expenses.'],
   '/workspace/team': ['Team', 'People, roles, and open work.'],
+  '/workspace/profile': ['Profile', 'The person behind the work.'],
   '/workspace/calendar': ['Calendar', 'Due dates and follow-ups at a glance.'],
   '/workspace/files': ['Files', 'Documents attached to work, with storage.'],
   '/workspace/templates': ['Templates', 'Kick off new projects from a saved playbook.'],
@@ -32,7 +34,9 @@ export default function Topbar({ pathname, user, companyName, currency, onToggle
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const timer = useRef<number | null>(null);
 
-  const [title, sub] = TITLES[pathname] ?? ['Workspace', ''];
+  const [title, sub] = TITLES[pathname] ?? (pathname.startsWith('/workspace/profile')
+    ? TITLES['/workspace/profile']
+    : ['Workspace', '']);
 
   useEffect(() => {
     setSidebarOpen(false);
@@ -119,9 +123,9 @@ export default function Topbar({ pathname, user, companyName, currency, onToggle
             ◐
           </span>
         </button>
-        <span className="pill" title={user.email}>
+        <Link href="/workspace/profile/me" className="pill profilepill" title={`${user.email} — open profile`}>
           {user.role === 'ADMIN' ? '★' : '•'} {user.name}
-        </span>
+        </Link>
         <button
           className="btn sq"
           onClick={() => signOut({ callbackUrl: '/login' })}

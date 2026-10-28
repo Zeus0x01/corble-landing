@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import type {
@@ -23,6 +24,7 @@ import {
   taskInlineSchema,
   financeSchema,
   userAdminSchema,
+  userUpdateSchema,
   settingsSchema,
   passwordResetSchema,
   templateUseSchema,
@@ -481,6 +483,50 @@ export async function deleteTeamUser(raw: unknown): Promise<ActionResult> {
   } catch (e) {
     return fail(e);
   }
+}
+
+export async function updateTeamUser(raw: unknown): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+    const input = userUpdateSchema.parse(raw);
+    const emailTaken = await db.user.findFirst({ where: { email: input.email, NOT: { id: input.id } } });
+    if (emailTaken) return { ok: false, error: 'Another user already uses that email.' };
+    const user = await db.user.update({
+      where: { id: input.id },
+      data: { name: input.name, email: input.email, role: input.role as Role },
+    });
+    await logActivity(admin.id, 'Team member updated', `${user.name} (${user.role})`);
+    revalidatePath('/workspace/team');
+    revalidatePath(`/workspace/profile/${user.id}`);
+    revalidatePath('/workspace/profile/me');
+    return okRes('Profile updated.');
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function toggleTeamUserActive(raw: unknown): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+    const id = z.string().min(1).parse(raw);
+    if (id === admin.id) return { ok: false, error: 'You cannot change your own active state.' };
+    const user = await db.user.findUnique({ where: { id }, select: { name: true, isActive: true } });
+    if (!user) return { ok: false, error: 'User not found.' };
+    const updated = await db.user.update({ where: { id }, data: { isActive: !user.isActive } });
+    await logActivity(admin.id, updated.isActive ? 'Member reactivated' : 'Member deactivated', user.name);
+    revalidatePath('/workspace/team');
+    revalidatePath(`/workspace/profile/${id}`);
+    return okRes(updated.isActive ? 'Member reactivated.' : 'Member deactivated.');
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Removes a member from their profile page, then returns to the team list. */
+export async function removeTeamUserAndExit(raw: unknown): Promise<ActionResult> {
+  const res = await deleteTeamUser(raw);
+  if (res.ok) redirect('/workspace/team');
+  return res;
 }
 
 export async function resetTeamPassword(raw: unknown): Promise<ActionResult> {

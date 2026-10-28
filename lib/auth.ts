@@ -44,6 +44,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const valid = await bcrypt.compare(parsed.data.password, user.passwordHash);
         if (!valid) return null;
+        if (!user.isActive) return null;
 
         clearRateLimit(`login:${parsed.data.email}`);
         return { id: user.id, name: user.name, email: user.email, role: user.role, theme: user.theme };

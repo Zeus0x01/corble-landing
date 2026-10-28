@@ -10,6 +10,7 @@ const ITEMS: { href: string; icon: string; label: string; admin?: boolean }[] = 
   { href: '/workspace/tasks', icon: '☑', label: 'Tasks' },
   { href: '/workspace/finance', icon: '₪', label: 'Finance' },
   { href: '/workspace/team', icon: '⛇', label: 'Team', admin: true },
+  { href: '/workspace/profile/me', icon: '☺', label: 'My Profile' },
   { href: '/workspace/calendar', icon: '▦', label: 'Calendar' },
   { href: '/workspace/files', icon: '☲', label: 'Files' },
   { href: '/workspace/templates', icon: '⚗', label: 'Templates' },
@@ -31,12 +32,17 @@ export default function Sidebar({ role }: { role: string }) {
       </div>
       <div className="navlabel">Workspace</div>
       <nav className="nav" aria-label="Workspace sections" id="wsnav">
-        {ITEMS.filter((i) => !i.admin || role === 'ADMIN').map((i) => (
-          <Link key={i.href} href={i.href} className={pathname === i.href ? 'active' : ''}>
-            <span className="ico" aria-hidden="true">{i.icon}</span>
-            {i.label}
-          </Link>
-        ))}
+        {ITEMS.filter((i) => !i.admin || role === 'ADMIN').map((i) => {
+          const active =
+            pathname === i.href ||
+            (i.href === '/workspace/profile/me' && pathname.startsWith('/workspace/profile'));
+          return (
+            <Link key={i.href} href={i.href} className={active ? 'active' : ''}>
+              <span className="ico" aria-hidden="true">{i.icon}</span>
+              {i.label}
+            </Link>
+          );
+        })}
       </nav>
       <div className="sidebottom">
         <Link href="/" style={{ display: 'inline-block', marginTop: 8, color: 'var(--nav-active)' }}>← Back to site</Link>

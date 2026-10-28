@@ -83,6 +83,13 @@ export const userAdminSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters').max(100).optional(),
 });
 
+export const userUpdateSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().trim().min(1).max(80),
+  email: z.string().trim().toLowerCase().email('Enter a valid email'),
+  role: z.enum(['ADMIN', 'MEMBER']),
+});
+
 export const settingsSchema = z.object({
   companyName: z.string().trim().min(1).max(80),
   currency: z.enum(['EGP', 'USD']),
