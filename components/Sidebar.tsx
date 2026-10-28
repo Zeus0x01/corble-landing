@@ -39,7 +39,6 @@ export default function Sidebar({ role }: { role: string }) {
         ))}
       </nav>
       <div className="sidebottom">
-        <div>Team workspace · data lives in PostgreSQL</div>
         <Link href="/" style={{ display: 'inline-block', marginTop: 8, color: 'var(--nav-active)' }}>← Back to site</Link>
       </div>
     </aside>
