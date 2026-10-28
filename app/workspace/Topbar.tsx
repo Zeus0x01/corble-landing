@@ -43,6 +43,28 @@ export default function Topbar({ pathname, user, companyName, currency, onToggle
     const backdrop = document.getElementById('sidebarBackdrop');
     sidebar?.classList.toggle('open', sidebarOpen);
     backdrop?.classList.toggle('show', sidebarOpen);
+
+    // Body scroll lock while drawer is open on mobile
+    if (sidebarOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSidebarOpen(false);
+    };
+    const onBackdrop = () => setSidebarOpen(false);
+
+    if (sidebarOpen) {
+      window.addEventListener('keydown', onKey);
+      backdrop?.addEventListener('click', onBackdrop);
+    }
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      backdrop?.removeEventListener('click', onBackdrop);
+      document.body.style.overflow = '';
+    };
   }, [sidebarOpen]);
 
   function onSearch(v: string) {
@@ -59,8 +81,17 @@ export default function Topbar({ pathname, user, companyName, currency, onToggle
   return (
     <div className="wstop" style={{ padding: '26px clamp(18px,3vw,42px) 0' }}>
       <div>
-        <button className="mobilemenu" aria-expanded={sidebarOpen} aria-label="Toggle sidebar" onClick={() => setSidebarOpen((o) => !o)}>☰ Menu</button>
-        <div className="eyebrow2" style={{ letterSpacing: '1.6px' }}>{companyName} · Workspace</div>
+        <button
+          className="mobilemenu"
+          aria-expanded={sidebarOpen}
+          aria-label="Toggle sidebar"
+          onClick={() => setSidebarOpen((o) => !o)}
+        >
+          ☰ Menu
+        </button>
+        <div className="eyebrow2" style={{ letterSpacing: '1.6px' }}>
+          {companyName} · Workspace
+        </div>
         <h1>{title}</h1>
         <div className="sub">{sub}</div>
       </div>
@@ -75,12 +106,30 @@ export default function Topbar({ pathname, user, companyName, currency, onToggle
             onChange={(e) => onSearch(e.target.value)}
           />
         </label>
-        <span className="pill" title={`Workspace currency: ${currency}`}>{currency}</span>
-        <button className="btn sq" onClick={onToggleTheme} aria-label="Toggle light/dark theme" title="Toggle theme">
-          <span aria-hidden="true" id="themeIcon">◐</span>
+        <span className="pill" title={`Workspace currency: ${currency}`}>
+          {currency}
+        </span>
+        <button
+          className="btn sq"
+          onClick={onToggleTheme}
+          aria-label="Toggle light/dark theme"
+          title="Toggle theme"
+        >
+          <span aria-hidden="true" id="themeIcon">
+            ◐
+          </span>
         </button>
-        <span className="pill" title={user.email}>{user.role === 'ADMIN' ? '★' : '•'} {user.name}</span>
-        <button className="btn sq" onClick={() => signOut({ callbackUrl: '/login' })} aria-label="Sign out" title="Sign out">⏻</button>
+        <span className="pill" title={user.email}>
+          {user.role === 'ADMIN' ? '★' : '•'} {user.name}
+        </span>
+        <button
+          className="btn sq"
+          onClick={() => signOut({ callbackUrl: '/login' })}
+          aria-label="Sign out"
+          title="Sign out"
+        >
+          ⏻
+        </button>
       </div>
     </div>
   );
