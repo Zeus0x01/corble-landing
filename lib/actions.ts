@@ -27,6 +27,7 @@ import {
   passwordResetSchema,
   templateUseSchema,
 } from '@/lib/validators';
+import { notifyTaskAssigned } from '@/lib/mail';
 
 export type ActionResult = { ok: boolean; error?: string; message?: string };
 
@@ -59,6 +60,34 @@ function fail(e: unknown): ActionResult {
 
 function okRes(message: string): ActionResult {
   return { ok: true, message };
+}
+
+async function notifyAssigneeIfAny(
+  assigneeId: string | null | undefined,
+  task: { title: string; priority: string; status: string; dueDate: Date | null; projectId?: string | null },
+  assignedByName: string,
+) {
+  if (!assigneeId) return;
+  const assignee = await db.user.findUnique({
+    where: { id: assigneeId },
+    select: { email: true, name: true },
+  });
+  if (!assignee?.email) return;
+  let projectName: string | null = null;
+  if (task.projectId) {
+    const p = await db.project.findUnique({ where: { id: task.projectId }, select: { name: true } });
+    projectName = p?.name ?? null;
+  }
+  void notifyTaskAssigned({
+    assigneeEmail: assignee.email,
+    assigneeName: assignee.name,
+    taskTitle: task.title,
+    priority: task.priority,
+    status: task.status,
+    dueDate: task.dueDate,
+    assignedBy: assignedByName,
+    projectName,
+  }).catch(() => {});
 }
 
 /* ------------------------------ LEADS ------------------------------ */
@@ -162,7 +191,6 @@ export async function convertLead(raw: unknown): Promise<ActionResult> {
         ownerId: lead.ownerId ?? null,
         budget: lead.estValue,
       },
-      include: { lead: true },
     });
     await logActivity(u.id, 'Lead converted to project', project.name);
     revalidatePath('/workspace/projects');
@@ -274,6 +302,7 @@ export async function createTask(raw: unknown): Promise<ActionResult> {
       },
     });
     await logActivity(u.id, 'Task created', t.title);
+    await notifyAssigneeIfAny(input.assigneeId, t, u.name);
     revalidatePath('/workspace');
     revalidatePath('/workspace/tasks');
     return okRes('Task added.');
@@ -287,6 +316,7 @@ export async function updateTask(raw: unknown): Promise<ActionResult> {
     const u = await requireUser();
     const input = taskSchema.parse(raw);
     const id = (raw as { id?: string }).id ?? '';
+    const prev = await db.task.findUnique({ where: { id }, select: { assigneeId: true } });
     const t = await db.task.update({
       where: { id },
       data: {
@@ -299,6 +329,9 @@ export async function updateTask(raw: unknown): Promise<ActionResult> {
       },
     });
     await logActivity(u.id, 'Task updated', t.title);
+    if (input.assigneeId && input.assigneeId !== prev?.assigneeId) {
+      await notifyAssigneeIfAny(input.assigneeId, t, u.name);
+    }
     revalidatePath('/workspace/tasks');
     revalidatePath('/workspace');
     return okRes('Task updated.');
@@ -311,6 +344,7 @@ export async function updateTaskInline(raw: unknown): Promise<ActionResult> {
   try {
     const u = await requireUser();
     const { id, status, priority, assigneeId } = taskInlineSchema.parse(raw);
+    const prev = await db.task.findUnique({ where: { id }, select: { assigneeId: true } });
     const t = await db.task.update({
       where: { id },
       data: {
@@ -320,6 +354,10 @@ export async function updateTaskInline(raw: unknown): Promise<ActionResult> {
       },
     });
     await logActivity(u.id, 'Task updated', t.title);
+    const newAssignee = assigneeId !== undefined ? (assigneeId || null) : prev?.assigneeId;
+    if (newAssignee && newAssignee !== prev?.assigneeId) {
+      await notifyAssigneeIfAny(newAssignee, t, u.name);
+    }
     revalidatePath('/workspace/tasks');
     revalidatePath('/workspace');
     return okRes('Task saved.');
@@ -487,7 +525,7 @@ export async function saveSettings(raw: unknown): Promise<ActionResult> {
         theme: input.theme,
       },
       create: { id: 'global', ...input, theme: input.theme },
-      });
+    });
     await logActivity(u.id, 'Settings updated', `${s.companyName} · ${s.currency} · ${s.timezone}`);
     revalidatePath('/workspace/settings');
     revalidatePath('/workspace');
@@ -564,4 +602,3 @@ export async function useTemplate(raw: unknown): Promise<ActionResult> {
     return fail(e);
   }
 }
-
