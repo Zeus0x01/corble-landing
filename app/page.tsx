@@ -31,8 +31,6 @@ function useNavFlight() {
   return { sky, away };
 }
 
-const Check = () => <span aria-hidden="true" />;
-
 function Nav() {
   const [open, setOpen] = useState(false);
   const { sky, away } = useNavFlight();
@@ -50,35 +48,31 @@ function Nav() {
         <div className="nav-actions">
           <a className="btn btn-ghost" href="/login">Client Portal</a>
           <a className="btn btn-lime" href="#contact">Start Free <span aria-hidden="true">→</span></a>
-          <button
-            className={`menu-btn${open ? ' open' : ''}`}
-            aria-label="Toggle menu"
-            aria-expanded={open}
-            onClick={() => setOpen(!open)}
-          >
+          <button className={`menu-btn${open ? ' open' : ''}`} aria-label="Toggle menu" aria-expanded={open} onClick={() => setOpen(!open)}>
             <span /><span /><span />
           </button>
         </div>
         <nav id="mobileMenu" className={`mobile-menu${open ? ' open' : ''}`} aria-label="Mobile">
-          <a href="#platform">Platform</a>
-          <a href="#how">How it works</a>
-          <a href="#pricing">Pricing</a>
-          <a href="#customers">Customers</a>
+          <a href="#platform" onClick={() => setOpen(false)}>Platform</a>
+          <a href="#how" onClick={() => setOpen(false)}>How it works</a>
+          <a href="#pricing" onClick={() => setOpen(false)}>Pricing</a>
+          <a href="#customers" onClick={() => setOpen(false)}>Customers</a>
           <a href="/login">Client Portal</a>
-          <a href="#contact">Start Free →</a>
+          <a href="#contact" onClick={() => setOpen(false)}>Start Free →</a>
         </nav>
       </div>
     </header>
   );
 }
 
-// NOTE: Full restored + fixed page content continues in next update if needed
 export default function Page() {
   return (
     <>
       <Nav />
-      <main>
-        <p style={{ padding: 40, color: '#fff' }}>Landing page is being restored. Please wait for the next commit.</p>
+      <main style={{ padding: '40px 20px', maxWidth: 720, margin: '0 auto', color: '#f2f5f9' }}>
+        <h1 style={{ fontSize: '2.4rem', letterSpacing: '-0.03em' }}>Corble landing page restore in progress</h1>
+        <p style={{ color: '#9aa4b2' }}>The previous empty commit is being fixed. Full page + mobile tour auto-play and navbar isolation will be restored in the next commit. Workspace at /workspace is unaffected.</p>
+        <p><a href="/workspace" style={{ color: '#c8ff00' }}>Open Workspace →</a></p>
       </main>
     </>
   );
