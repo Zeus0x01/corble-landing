@@ -1,8 +1,15 @@
+import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { redirect } from 'next/navigation';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
 import Shell from './Shell';
+
+// The workspace is behind auth and never meant for search engines.
+export const metadata: Metadata = {
+  title: 'Workspace',
+  robots: { index: false, follow: false },
+};
 
 export default async function WorkspaceLayout({ children }: { children: ReactNode }) {
   const session = await auth();
