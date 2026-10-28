@@ -57,6 +57,9 @@ export const metadata: Metadata = {
     description: SOCIAL_DESCRIPTION,
     images: ['/opengraph-image.png'],
   },
+  verification: {
+    google: '6MvyV5y8mJTZqA7UI-TXxnq-XoMcnWwDD14zUwb0BGY',
+  },
   robots: {
     index: true,
     follow: true,
