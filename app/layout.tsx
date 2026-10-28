@@ -6,6 +6,9 @@ import type { Metadata, Viewport } from 'next';
 const SITE_URL = 'https://corble.net';
 const DESCRIPTION =
   'Corble builds practical websites and automation systems that help real businesses work smarter — results, not another tool to babysit.';
+// Social previews truncate around ~125 characters, so shares get a shorter variant.
+const SOCIAL_DESCRIPTION =
+  'Corble builds practical websites and automation systems that help real businesses work smarter — results, not another tool.';
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -45,12 +48,14 @@ export const metadata: Metadata = {
     siteName: 'Corble',
     locale: 'en_US',
     title: 'Corble | Decisions, not dashboards.',
-    description: DESCRIPTION,
+    description: SOCIAL_DESCRIPTION,
+    images: [{ url: '/opengraph-image.png', width: 1200, height: 630, alt: 'Corble — Decisions, not dashboards. Practical websites & automation systems.' }],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Corble | Decisions, not dashboards.',
-    description: DESCRIPTION,
+    description: SOCIAL_DESCRIPTION,
+    images: ['/opengraph-image.png'],
   },
   robots: {
     index: true,
