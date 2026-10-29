@@ -26,6 +26,7 @@ export default function TaskActions(p: Props) {
   const [showComment, setShowComment] = useState(false);
   const [comment, setComment] = useState('');
   const [note, setNote] = useState('');
+  const [showNote, setShowNote] = useState(false);
 
   function run(fn: () => Promise<{ ok: boolean; error?: string; message?: string }>) {
     return async () => {
@@ -42,20 +43,61 @@ export default function TaskActions(p: Props) {
   return (
     <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
       {!mine && p.assigneeId && p.status !== 'DONE' && (p.eligible || p.isAdmin) && !p.iRequested && !p.pendingForMe ? (
-        <button
-          className="btn"
-          disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            const res = await requestHandover({ taskId: p.taskId, note: note || undefined });
-            setBusy(false);
-            toast(res.error ?? res.message ?? 'Failed', res.ok ? 'ok' : 'err');
-            if (res.ok) router.refresh();
-          }}
-          title="Request to take over this task"
-        >
-          ⇄ Request handover
-        </button>
+        showNote ? (
+          <span style={{ display: 'inline-flex', gap: 6 }}>
+            <input
+              className="textinput"
+              style={{ maxWidth: 220 }}
+              placeholder="Note to the owner (optional)"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  setShowNote(false);
+                  void (async () => {
+                    setBusy(true);
+                    const res = await requestHandover({ taskId: p.taskId, note: note.trim() || undefined });
+                    setBusy(false);
+                    toast(res.error ?? res.message ?? 'Failed', res.ok ? 'ok' : 'err');
+                    if (res.ok) {
+                      setNote('');
+                      router.refresh();
+                    }
+                  })();
+                }
+              }}
+              autoFocus
+            />
+            <button
+              className="btn primary"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                const res = await requestHandover({ taskId: p.taskId, note: note.trim() || undefined });
+                setBusy(false);
+                toast(res.error ?? res.message ?? 'Failed', res.ok ? 'ok' : 'err');
+                if (res.ok) {
+                  setNote('');
+                  setShowNote(false);
+                  router.refresh();
+                }
+              }}
+              title="Send the handover request"
+            >
+              Send request
+            </button>
+            <button className="btn sq" disabled={busy} onClick={() => setShowNote(false)} aria-label="Cancel note">✕</button>
+          </span>
+        ) : (
+          <button
+            className="btn"
+            disabled={busy}
+            onClick={() => setShowNote(true)}
+            title="Request to take over this task"
+          >
+            ⇄ Request handover
+          </button>
+        )
       ) : null}
 
       {p.iRequested && !p.pendingForMe ? <span className="pill">handover pending…</span> : null}
@@ -94,17 +136,6 @@ export default function TaskActions(p: Props) {
             autoFocus
           />
         </span>
-      ) : null}
-
-      {!showComment && !mine && p.status !== 'DONE' && p.iRequested ? (
-        <input
-          className="textinput"
-          style={{ maxWidth: 180 }}
-          placeholder="Request note (optional)"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          onFocus={() => setNote(note)}
-        />
       ) : null}
     </span>
   );
