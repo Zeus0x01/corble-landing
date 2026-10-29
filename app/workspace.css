@@ -406,3 +406,9 @@ a.kpi { cursor: pointer; }
 /* --- fix: keep muted <small> readable inside gradient .num --- */
 [data-ws] .num small { -webkit-text-fill-color: var(--muted); color: var(--muted); background: none !important; }
 [data-theme='light'][data-ws] .num small { -webkit-text-fill-color: #59657b; }
+
+/* --- dropdown options: never inherit a light bg with light text --- */
+[data-ws] select { color: var(--text); }
+[data-ws] select option { background: #10141b; color: var(--text); }
+[data-theme='light'][data-ws] select, [data-theme='light'][data-ws] select option { background: #ffffff; color: #172033; }
+[data-ws] select:focus option, [data-ws] select:hover option { background: #10141b; color: var(--text); }
