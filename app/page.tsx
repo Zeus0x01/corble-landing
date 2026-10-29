@@ -625,6 +625,89 @@ function Footer() {
   );
 }
 
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Organization',
+      '@id': 'https://corble.net/#org',
+      name: 'Corble',
+      url: 'https://corble.net/',
+      email: 'hello@corble.net',
+      logo: 'https://corble.net/corble-logo-dark.png',
+      description:
+        'Corble builds practical websites and automation systems that help real businesses work smarter.',
+    },
+    {
+      '@type': 'WebSite',
+      '@id': 'https://corble.net/#website',
+      url: 'https://corble.net/',
+      name: 'Corble | Decisions, not dashboards.',
+      description:
+        'Practical websites and automation systems that capture leads, answer customers, and run the busywork.',
+      publisher: { '@id': 'https://corble.net/#org' },
+      inLanguage: 'en',
+    },
+    {
+      '@type': 'Service',
+      name: 'Business websites & automation systems',
+      provider: { '@id': 'https://corble.net/#org' },
+      areaServed: 'Worldwide',
+      serviceType: ['Business website development', 'Workflow automation', 'Lead capture automation', 'AI agents'],
+      offers: [
+        { '@type': 'Offer', name: 'Starter', price: 0, priceCurrency: 'USD', description: '1 automation workflow, website starter in your brand, WhatsApp lead capture.' },
+        { '@type': 'Offer', name: 'Pro', price: 49, priceCurrency: 'USD', description: 'Unlimited workflows, anomaly alerts, AI-drafted follow-ups, 40+ integrations.' },
+        { '@type': 'Offer', name: 'Business', description: 'Custom builds & agents, dedicated onboarding, SLA + monthly review.' },
+      ],
+    },
+    {
+      '@type': 'FAQPage',
+      mainEntity: [
+        {
+          '@type': 'Question',
+          name: 'What exactly does Corble do?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'We build practical websites and automation systems — lead capture, follow-ups, booking handling, WhatsApp workflows, and reporting that pings anomalies. You get outcomes: fewer missed customers, less manual work.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: 'Do I need technical skills or another tool to learn?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'No. If you can describe the task in a sentence, Corble can run it. There is intentionally no dashboard full of charts to babysit — the system acts and reports when something needs you.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: 'How long until it actually saves me time?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Most teams see the first automation live within a week and save hours per week within a month. Starter workflows are live in days.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: 'Will it work with the tools I already use?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Corble connects with 40+ platforms including WhatsApp, Google Workspace, Meta, calendars, payments, and CRMs — and we build custom connectors when needed.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: 'Is my data safe?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Yes. Data is encrypted in transit and at rest, access is role-based, and we follow SOC 2 practices. You own your data — export or delete it anytime.',
+          },
+        },
+      ],
+    },
+  ],
+};
+
 export default function Page() {
   useEffect(() => {
     const els = document.querySelectorAll<Element>('.reveal');
@@ -729,6 +812,7 @@ export default function Page() {
     <>
       <div className="grid-field" aria-hidden="true" />
       <div className="noise" aria-hidden="true" />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <a className="skip-link" href="#home">Skip to content</a>
       <Nav />
       <main id="main">

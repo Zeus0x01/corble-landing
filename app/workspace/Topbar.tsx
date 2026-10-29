@@ -26,11 +26,12 @@ const TITLES: Record<string, [string, string]> = {
   '/workspace/vercel': ['Deployments', 'Preview and production releases.'],
   '/workspace/finance': ['Finance', 'Invoices, payments, expenses.'],
   '/workspace/team': ['Team', 'People, roles, and open work.'],
+  '/workspace/profile': ['Profile', 'The person behind the work.'],
   '/workspace/notifications': ['Notifications', 'Handover and review updates.'],
-  '/workspace/calendar': ['Calendar', 'Due dates and follow-ups.'],
-  '/workspace/files': ['Files', 'Documents attached to work.'],
-  '/workspace/templates': ['Templates', 'Automation and website playbook.'],
-  '/workspace/reports': ['Reports', 'Pipeline, delivery, cash numbers.'],
+  '/workspace/calendar': ['Calendar', 'Due dates and follow-ups at a glance.'],
+  '/workspace/files': ['Files', 'Documents attached to work, with storage.'],
+  '/workspace/templates': ['Templates', 'Kick off new projects from a saved playbook.'],
+  '/workspace/reports': ['Reports', 'Pipeline, delivery, and cash numbers.'],
   '/workspace/settings': ['Settings', 'Company, currency, timezone, appearance.'],
 };
 
@@ -40,7 +41,9 @@ export default function Topbar({ pathname, user, companyName, currency, onToggle
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const timer = useRef<number | null>(null);
 
-  const [title, sub] = TITLES[pathname] ?? [pathname.split('/').pop()?.replace(/-/g, ' ') || 'Workspace', ''];
+  const [title, sub] = TITLES[pathname] ?? (pathname.startsWith('/workspace/profile')
+    ? TITLES['/workspace/profile']
+    : [(pathname.split('/').pop() ?? 'Workspace').replace(/-/g, ' '), '']);
 
   useEffect(() => {
     setSidebarOpen(false);
@@ -51,6 +54,28 @@ export default function Topbar({ pathname, user, companyName, currency, onToggle
     const backdrop = document.getElementById('sidebarBackdrop');
     sidebar?.classList.toggle('open', sidebarOpen);
     backdrop?.classList.toggle('show', sidebarOpen);
+
+    // Body scroll lock while drawer is open on mobile
+    if (sidebarOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSidebarOpen(false);
+    };
+    const onBackdrop = () => setSidebarOpen(false);
+
+    if (sidebarOpen) {
+      window.addEventListener('keydown', onKey);
+      backdrop?.addEventListener('click', onBackdrop);
+    }
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      backdrop?.removeEventListener('click', onBackdrop);
+      document.body.style.overflow = '';
+    };
   }, [sidebarOpen]);
 
   function onSearch(v: string) {
@@ -70,34 +95,60 @@ export default function Topbar({ pathname, user, companyName, currency, onToggle
 
   return (
     <div className="wstop" style={{ padding: '26px clamp(18px,3vw,42px) 0' }}>
-      <div className="wstop-head">
-        <div>
-          <div className="eyebrow2" style={{ letterSpacing: '1.6px' }}>{companyName} · Workspace</div>
-          <h1>{title}</h1>
-          <div className="sub">{sub}</div>
+      <div>
+        <button
+          className="mobilemenu"
+          aria-expanded={sidebarOpen}
+          aria-label="Toggle sidebar"
+          onClick={() => setSidebarOpen((o) => !o)}
+        >
+          ☰ Menu
+        </button>
+        <div className="eyebrow2" style={{ letterSpacing: '1.6px' }}>
+          {companyName} · Workspace
         </div>
-        <div className="wstop-right">
-          <label className="ws-search" htmlFor="globalSearch">
-            <span aria-hidden="true">⌕</span>
-            <input
-              id="globalSearch"
-              type="search"
-              placeholder="Search in this view…"
-              value={q}
-              onChange={(e) => onSearch(e.target.value)}
-            />
-          </label>
-          <Link href="/workspace/notifications" className="btn sq" aria-label="Notifications" title="Notifications">
-            ◉
-          </Link>
-          <span className="pill" title={`Workspace currency: ${currency}`}>{currency}</span>
-          <button className="btn sq" onClick={onToggleTheme} aria-label="Toggle light/dark theme" title="Toggle theme">
-            <span aria-hidden="true" id="themeIcon">◐</span>
-          </button>
-          <span className="pill" title={user.email}>{user.role === 'ADMIN' ? '★' : '•'} {user.name}</span>
-          <button className="btn sq" onClick={() => signOut({ callbackUrl: '/login' })} aria-label="Sign out" title="Sign out">⏻</button>
-          <button className="btn sq ws-burger" onClick={toggleSidebar} aria-label="Toggle menu" title="Menu">≡</button>
-        </div>
+        <h1>{title}</h1>
+        <div className="sub">{sub}</div>
+      </div>
+      <div className="wstop-right">
+        <label className="ws-search" htmlFor="globalSearch">
+          <span aria-hidden="true">⌕</span>
+          <input
+            id="globalSearch"
+            type="search"
+            placeholder="Search in this view…"
+            value={q}
+            onChange={(e) => onSearch(e.target.value)}
+          />
+        </label>
+        <Link href="/workspace/notifications" className="btn sq" aria-label="Notifications" title="Notifications">
+          ◉
+        </Link>
+        <span className="pill" title={`Workspace currency: ${currency}`}>
+          {currency}
+        </span>
+        <button
+          className="btn sq"
+          onClick={onToggleTheme}
+          aria-label="Toggle light/dark theme"
+          title="Toggle theme"
+        >
+          <span aria-hidden="true" id="themeIcon">
+            ◐
+          </span>
+        </button>
+        <Link href="/workspace/profile/me" className="pill profilepill" title={`${user.email} — open profile`}>
+          {user.role === 'ADMIN' ? '★' : '•'} {user.name}
+        </Link>
+        <button
+          className="btn sq"
+          onClick={() => signOut({ callbackUrl: '/login' })}
+          aria-label="Sign out"
+          title="Sign out"
+        >
+          ⏻
+        </button>
+        <button className="btn sq ws-burger" onClick={toggleSidebar} aria-label="Toggle menu" title="Menu">≡</button>
       </div>
     </div>
   );

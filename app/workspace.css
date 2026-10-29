@@ -48,6 +48,9 @@
 [data-ws] a, [data-ws] button { transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease; }
 
 .wsapp { display: grid; grid-template-columns: 235px minmax(0, 1fr); min-height: 100vh; }
+/* Keep the mobile drawer backdrop OUT of the grid flow at every width —
+   as a static child it would consume a grid cell and push the content column
+   below the fold. It only needs to exist (visually) while the drawer is open. */
 .sidebar-backdrop { position: fixed; inset: 0; background: rgba(2, 4, 11, 0.55); z-index: 29; display: none; pointer-events: none; }
 .sidebar-backdrop.show { display: block; pointer-events: auto; }
 .wssidebar { border-right: 1px solid var(--line); padding: 24px 15px; display: flex; flex-direction: column; background: var(--sidebar); position: sticky; top: 0; height: 100vh; overflow-y: auto; }
@@ -57,10 +60,10 @@
 [data-theme='light'][data-ws] .wsbrand span { background: linear-gradient(100deg, #25203b 35%, #7054c7); background-clip: text; }
 .navlabel { color: #69758c; font-size: 10px; font-weight: 800; letter-spacing: 1.5px; padding: 12px 11px 7px; text-transform: uppercase; }
 [data-theme='light'][data-ws] .navlabel { color: #7b8498; }
-.nav { display: grid; gap: 4px; }
-.nav a { text-align: left; padding: 11px 12px; border-radius: 10px; display: flex; align-items: center; gap: 12px; color: var(--nav-text); }
-.nav a:hover { background: var(--nav-hover); color: var(--text); }
-.nav a.active { background: linear-gradient(100deg, rgba(124, 58, 237, 0.21), rgba(139, 92, 246, 0.04)); color: var(--nav-active); box-shadow: inset 3px 0 #9b75ff; }
+[data-ws] .nav { display: grid; gap: 4px; }
+[data-ws] .nav a { text-align: left; padding: 11px 12px; border-radius: 10px; display: flex; align-items: center; gap: 12px; color: var(--nav-text); }
+[data-ws] .nav a:hover { background: var(--nav-hover); color: var(--text); }
+[data-ws] .nav a.active { background: linear-gradient(100deg, rgba(124, 58, 237, 0.21), rgba(139, 92, 246, 0.04)); color: var(--nav-active); box-shadow: inset 3px 0 #9b75ff; }
 .ico { width: 18px; text-align: center; font-size: 15px; flex: none; }
 .wsmain { min-width: 0; padding: 26px clamp(18px, 3vw, 42px) 44px; }
 .wstop { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 26px; flex-wrap: wrap; }
@@ -203,4 +206,39 @@ input:focus, select:focus, textarea:focus { border-color: var(--purple); box-sha
 }
 @media (prefers-reduced-motion: reduce) {
   [data-ws] *, .bar, .fill { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
+
+/* ------------------------------ PROFILE ------------------------------ */
+
+.profilehead { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
+.avatar {
+  width: 62px; height: 62px; border-radius: 999px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  font-size: 20px; font-weight: 800; letter-spacing: 0.02em; color: #fff;
+  background: linear-gradient(140deg, #7c3aed, #6d5dfc);
+  box-shadow: 0 10px 24px rgba(124, 58, 237, 0.32);
+}
+.avatar.gold { background: linear-gradient(140deg, #f59e0b, #ff8a4c); box-shadow: 0 10px 24px rgba(255, 138, 76, 0.3); }
+.profilemeta { min-width: 0; flex: 1; }
+.profilename { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.profilename strong { font-size: 18px; letter-spacing: -0.02em; }
+.profileactions { display: flex; gap: 8px; flex-wrap: wrap; }
+.profilelink { display: block; color: inherit; text-decoration: none; }
+.profilelink:hover strong { color: var(--purple); }
+.profilepill { cursor: pointer; }
+.profilepill:hover { color: var(--purple); border-color: rgba(139, 92, 246, 0.5); }
+
+.profilegrid { display: grid; grid-template-columns: 1.2fr 0.9fr; gap: 14px; align-items: start; margin-top: 6px; }
+.activitylist { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.activitylist li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--table-line); font-size: 13px; }
+.activitylist li:last-child { border-bottom: 0; padding-bottom: 0; }
+.activitylist strong { font-weight: 650; }
+.activitylist .itemsub { margin-top: 3px; }
+
+@media (max-width: 1150px) {
+  .profilegrid { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .profilehead { align-items: flex-start; }
+  .profileactions { width: 100%; }
 }

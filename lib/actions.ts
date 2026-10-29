@@ -1,6 +1,7 @@
-'use server';
+﻿'use server';
 
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import type {
@@ -26,6 +27,7 @@ import {
   taskInlineSchema,
   financeSchema,
   userAdminSchema,
+  userUpdateSchema,
   settingsSchema,
   passwordResetSchema,
   templateUseSchema,
@@ -46,6 +48,7 @@ import {
   finalDeliverySchema,
   acceptDeliverySchema,
 } from '@/lib/validators';
+import { notifyTaskAssigned } from '@/lib/mail';
 
 export type ActionResult = { ok: boolean; error?: string; message?: string };
 
@@ -80,6 +83,40 @@ function okRes(message: string): ActionResult {
   return { ok: true, message };
 }
 
+async function notifyAssigneeIfAny(
+  assigneeId: string | null | undefined,
+  task: { title: string; priority: string; status: string; dueDate: Date | null; projectId?: string | null },
+  assignedByName: string,
+) {
+  if (!assigneeId) return;
+  const assignee = await db.user.findUnique({
+    where: { id: assigneeId },
+    select: { email: true, name: true },
+  });
+  if (!assignee?.email) return;
+  let projectName: string | null = null;
+  if (task.projectId) {
+    const p = await db.project.findUnique({ where: { id: task.projectId }, select: { name: true } });
+    projectName = p?.name ?? null;
+  }
+  const result = await notifyTaskAssigned({
+    assigneeEmail: assignee.email,
+    assigneeName: assignee.name,
+    taskTitle: task.title,
+    priority: task.priority,
+    status: task.status,
+    dueDate: task.dueDate,
+    assignedBy: assignedByName,
+    projectName,
+  }).catch((e) => {
+    console.error('[mail] task-assignment email crashed:', e);
+    return { ok: false, error: 'Email send crashed' };
+  });
+  if (result && !result.ok) {
+    console.warn('[mail] Task assignment email NOT sent to', assignee.email, 'Â· reason:', result.error);
+  }
+}
+
 /* ------------------------------ LEADS ------------------------------ */
 
 export async function createLead(raw: unknown): Promise<ActionResult> {
@@ -98,7 +135,7 @@ export async function createLead(raw: unknown): Promise<ActionResult> {
         ownerId: input.ownerId ?? null,
       },
     });
-    await logActivity(u.id, 'Lead created', `${lead.name} · ${lead.service}`);
+    await logActivity(u.id, 'Lead created', `${lead.name} Â· ${lead.service}`);
     revalidatePath('/workspace');
     revalidatePath('/workspace/leads');
     return okRes('Lead added.');
@@ -139,7 +176,7 @@ export async function setLeadStatus(raw: unknown): Promise<ActionResult> {
     const u = await requireUser();
     const { id, status } = leadStatusSchema.parse(raw);
     const lead = await db.lead.update({ where: { id }, data: { status: status as LeadStatus } });
-    await logActivity(u.id, 'Lead status changed', `${lead.name} → ${status}`);
+    await logActivity(u.id, 'Lead status changed', `${lead.name} â†’ ${status}`);
     revalidatePath('/workspace/leads');
     revalidatePath('/workspace');
     return okRes('Status saved.');
@@ -171,7 +208,7 @@ export async function convertLead(raw: unknown): Promise<ActionResult> {
     if (lead.projects.length > 0) return { ok: false, error: 'A project already exists for this lead.' };
     const project = await db.project.create({
       data: {
-        name: `${lead.name} — ${lead.service}`,
+        name: `${lead.name} â€” ${lead.service}`,
         clientName: lead.name,
         leadId: lead.id,
         service: lead.service,
@@ -181,7 +218,6 @@ export async function convertLead(raw: unknown): Promise<ActionResult> {
         ownerId: lead.ownerId ?? null,
         budget: lead.estValue,
       },
-      include: { lead: true },
     });
     await logActivity(u.id, 'Lead converted to project', project.name);
     revalidatePath('/workspace/projects');
@@ -253,7 +289,7 @@ export async function setProjectStatus(raw: unknown): Promise<ActionResult> {
     const u = await requireUser();
     const { id, status } = projectStatusSchema.parse(raw);
     const p = await db.project.update({ where: { id }, data: { status: status as ProjectStatus } });
-    await logActivity(u.id, 'Project status changed', `${p.name} → ${status}`);
+    await logActivity(u.id, 'Project status changed', `${p.name} â†’ ${status}`);
     revalidatePath('/workspace/projects');
     revalidatePath('/workspace');
     return okRes('Status saved.');
@@ -297,6 +333,7 @@ export async function createTask(raw: unknown): Promise<ActionResult> {
       },
     });
     await logActivity(u.id, 'Task created', t.title);
+    await notifyAssigneeIfAny(input.assigneeId, t, u.name);
     revalidatePath('/workspace');
     revalidatePath('/workspace/tasks');
     revalidatePath('/workspace/tasks/team');
@@ -312,6 +349,7 @@ export async function updateTask(raw: unknown): Promise<ActionResult> {
     const input = taskSchema.parse(raw);
     const id = (raw as { id?: string }).id ?? '';
     const before = await db.task.findUnique({ where: { id }, select: { title: true, assigneeId: true, originalOwnerId: true } });
+    const prev = before;
     const t = await db.task.update({
       where: { id },
       data: {
@@ -333,6 +371,9 @@ export async function updateTask(raw: unknown): Promise<ActionResult> {
       if (pending.count > 0) await notify(t.assigneeId!, 'HANDOVER_CANCELLED', `Pending handover requests on "${t.title}" were closed automatically`, 'Task was reassigned during the update.', '/workspace/tasks');
     }
     await logActivity(u.id, 'Task updated', t.title);
+    if (input.assigneeId && input.assigneeId !== prev?.assigneeId) {
+      await notifyAssigneeIfAny(input.assigneeId, t, u.name);
+    }
     revalidatePath('/workspace/tasks');
     revalidatePath('/workspace/tasks/team');
     revalidatePath('/workspace');
@@ -346,6 +387,7 @@ export async function updateTaskInline(raw: unknown): Promise<ActionResult> {
   try {
     const u = await requireUser();
     const { id, status, priority, assigneeId } = taskInlineSchema.parse(raw);
+    const prev = await db.task.findUnique({ where: { id }, select: { assigneeId: true } });
     const t = await db.task.update({
       where: { id },
       data: {
@@ -355,6 +397,10 @@ export async function updateTaskInline(raw: unknown): Promise<ActionResult> {
       },
     });
     await logActivity(u.id, 'Task updated', t.title);
+    const newAssignee = assigneeId !== undefined ? (assigneeId || null) : prev?.assigneeId;
+    if (newAssignee && newAssignee !== prev?.assigneeId) {
+      await notifyAssigneeIfAny(newAssignee, t, u.name);
+    }
     revalidatePath('/workspace/tasks');
     revalidatePath('/workspace');
     return okRes('Task saved.');
@@ -480,6 +526,50 @@ export async function deleteTeamUser(raw: unknown): Promise<ActionResult> {
   }
 }
 
+export async function updateTeamUser(raw: unknown): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+    const input = userUpdateSchema.parse(raw);
+    const emailTaken = await db.user.findFirst({ where: { email: input.email, NOT: { id: input.id } } });
+    if (emailTaken) return { ok: false, error: 'Another user already uses that email.' };
+    const user = await db.user.update({
+      where: { id: input.id },
+      data: { name: input.name, email: input.email, role: input.role as Role },
+    });
+    await logActivity(admin.id, 'Team member updated', `${user.name} (${user.role})`);
+    revalidatePath('/workspace/team');
+    revalidatePath(`/workspace/profile/${user.id}`);
+    revalidatePath('/workspace/profile/me');
+    return okRes('Profile updated.');
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function toggleTeamUserActive(raw: unknown): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+    const id = z.string().min(1).parse(raw);
+    if (id === admin.id) return { ok: false, error: 'You cannot change your own active state.' };
+    const user = await db.user.findUnique({ where: { id }, select: { name: true, isActive: true } });
+    if (!user) return { ok: false, error: 'User not found.' };
+    const updated = await db.user.update({ where: { id }, data: { isActive: !user.isActive } });
+    await logActivity(admin.id, updated.isActive ? 'Member reactivated' : 'Member deactivated', user.name);
+    revalidatePath('/workspace/team');
+    revalidatePath(`/workspace/profile/${id}`);
+    return okRes(updated.isActive ? 'Member reactivated.' : 'Member deactivated.');
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Removes a member from their profile page, then returns to the team list. */
+export async function removeTeamUserAndExit(raw: unknown): Promise<ActionResult> {
+  const res = await deleteTeamUser(raw);
+  if (res.ok) redirect('/workspace/team');
+  return res;
+}
+
 export async function resetTeamPassword(raw: unknown): Promise<ActionResult> {
   try {
     const u = await requireAdmin();
@@ -522,8 +612,8 @@ export async function saveSettings(raw: unknown): Promise<ActionResult> {
         theme: input.theme,
       },
       create: { id: 'global', ...input, theme: input.theme },
-      });
-    await logActivity(u.id, 'Settings updated', `${s.companyName} · ${s.currency} · ${s.timezone}`);
+    });
+    await logActivity(u.id, 'Settings updated', `${s.companyName} Â· ${s.currency} Â· ${s.timezone}`);
     revalidatePath('/workspace/settings');
     revalidatePath('/workspace');
     return okRes('Settings saved.');
@@ -601,7 +691,7 @@ export async function useTemplate(raw: unknown): Promise<ActionResult> {
 }
 
 
-/* ================= PHASE 1 � NOTIFICATIONS + HANDOVERS ================= */
+/* ================= PHASE 1 ï¿½ NOTIFICATIONS + HANDOVERS ================= */
 
 export async function notify(userId: string, type: string, title: string, body?: string, link?: string) {
   await db.notification.create({ data: { userId, type, title, body: body ?? null, link: link ?? null } });
@@ -730,7 +820,7 @@ export async function requestHandover(raw: unknown): Promise<ActionResult> {
       });
       if (dup) return dup;
       const other = await tx.handoverRequest.findFirst({ where: { taskId: task.id, status: 'PENDING' } });
-      // Another pending request from a different member does not block visibility � multiple members
+      // Another pending request from a different member does not block visibility ï¿½ multiple members
       // may ask the same owner; owner decides. This only prevents duplicates per requester.
       const created = dup ?? (await tx.handoverRequest.create({
         data: {
@@ -846,7 +936,7 @@ export async function decideHandover(raw: unknown): Promise<ActionResult> {
   }
 }
 
-/* ================= PHASE 2 � DELIVERABLES ================= */
+/* ================= PHASE 2 ï¿½ DELIVERABLES ================= */
 
 export async function submitDeliverable(raw: unknown): Promise<ActionResult> {
   try {
@@ -958,7 +1048,7 @@ export async function reviewDeliverable(raw: unknown): Promise<ActionResult> {
       await notify(
         version.deliverable.createdById,
         input.decision === 'APPROVED' ? 'DELIVERABLE_APPROVED' : 'DELIVERABLE_CHANGES',
-        `Review result: ${input.decision.replace('_', ' ').toLowerCase()} � ${version.deliverable.title}`,
+        `Review result: ${input.decision.replace('_', ' ').toLowerCase()} ï¿½ ${version.deliverable.title}`,
         input.comment,
         '/workspace/deliverables'
       );
@@ -970,7 +1060,7 @@ export async function reviewDeliverable(raw: unknown): Promise<ActionResult> {
   }
 }
 
-/* ================= PHASE 3 � INCOMING LEADS PIPELINE ================= */
+/* ================= PHASE 3 ï¿½ INCOMING LEADS PIPELINE ================= */
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -1017,7 +1107,7 @@ export async function runVerification(raw: unknown): Promise<ActionResult> {
         const res = await fetch(url, { signal: ac.signal, method: 'GET', headers: { 'user-agent': 'CorbleBot/1.0 (lead-verification)' }, redirect: 'follow' });
         clearTimeout(timer);
         result = res.ok ? 'WEBSITE_REACHABLE' : 'VERIFICATION_FAILED';
-        detail = `${res.ok ? 'Reached' : `HTTP ${res.status}`} ${new URL(res.url).host} � reachability is not proof of relevance`;
+        detail = `${res.ok ? 'Reached' : `HTTP ${res.status}`} ${new URL(res.url).host} ï¿½ reachability is not proof of relevance`;
       } catch {
         result = 'VERIFICATION_FAILED';
         detail = `Request to ${url} failed or timed out (8s)`;
@@ -1071,7 +1161,7 @@ export async function addResearch(raw: unknown): Promise<ActionResult> {
     const input = researchUpdateSchema.parse(raw);
     const lead = await db.incomingLead.findUnique({ where: { id: input.leadId }, select: { id: true, company: true, enrichment: true, processingStatus: true, researchNotes: true } });
     if (!lead) return { ok: false, error: 'Lead not found.' };
-    if (lead.processingStatus === 'REJECTED') return { ok: false, error: 'Lead was rejected � restore it first.' };
+    if (lead.processingStatus === 'REJECTED') return { ok: false, error: 'Lead was rejected ï¿½ restore it first.' };
     await db.$transaction(async (tx) => {
       await tx.leadResearchUpdate.create({ data: { leadId: lead.id, authorId: u.id, body: input.body, sourceUrl: input.sourceUrl ?? null } });
       const existing = (lead.enrichment as { research?: string[] } | null)?.research ?? [];
@@ -1098,7 +1188,7 @@ export async function rejectIncoming(raw: unknown): Promise<ActionResult> {
     const input = z.object({ incomingId: z.string().min(1), restore: z.boolean().optional() }).parse(raw);
     const lead = await db.incomingLead.findUnique({ where: { id: input.incomingId }, select: { id: true, company: true, processingStatus: true } });
     if (!lead) return { ok: false, error: 'Lead not found.' };
-    if (lead.processingStatus === 'PROMOTED') return { ok: false, error: 'Already promoted � cannot reject.' };
+    if (lead.processingStatus === 'PROMOTED') return { ok: false, error: 'Already promoted ï¿½ cannot reject.' };
     await db.incomingLead.update({
       where: { id: lead.id },
       data: { processingStatus: input.restore ? 'UNDER_REVIEW' : 'REJECTED', reviewedById: u.id },
@@ -1153,7 +1243,7 @@ export async function promoteToFinal(raw: unknown): Promise<ActionResult> {
           email: lead.email,
           notes: `Promoted from Incoming Lead ${lead.id} (source: ${lead.source}${lead.sourceUrl ? `, ${lead.sourceUrl}` : ''}). ${lead.researchNotes ? 'Research: ' + lead.researchNotes : ''}`.slice(0, 1900),
           service: lead.industry ?? 'General enquiry',
-          source: `Incoming � ${lead.source}`,
+          source: `Incoming ï¿½ ${lead.source}`,
           status: 'NEW',
           estValue: input.estValue,
           ownerId: u.id,
@@ -1168,12 +1258,12 @@ export async function promoteToFinal(raw: unknown): Promise<ActionResult> {
     });
     if (!out || out.code === 'missing') return { ok: false, error: 'Incoming lead not found.' };
     if (out.code === 'rejected') return { ok: false, error: 'Lead was rejected. Restore it first.' };
-    if (out.code === 'nocontact') return { ok: false, error: 'Lead has no email, phone or website � verify or research it first.' };
+    if (out.code === 'nocontact') return { ok: false, error: 'Lead has no email, phone or website ï¿½ verify or research it first.' };
     if (out.code === 'dupfinal') {
       return { ok: false, error: `A final lead already matches this record (see "${'name' in out && out.name ? out.name : 'existing'}"). Review before promoting.`, message: 'conflict' };
     }
     if (out.code === 'already') {
-      return { ok: true, message: `Already promoted earlier � final lead ${out.id}.` };
+      return { ok: true, message: `Already promoted earlier ï¿½ final lead ${out.id}.` };
     }
     revalidatePath('/workspace/leads/incoming');
     revalidatePath('/workspace/leads');
@@ -1183,7 +1273,7 @@ export async function promoteToFinal(raw: unknown): Promise<ActionResult> {
   }
 }
 
-/* ================= PHASE 5 � AUTOMATION PROJECTS ================= */
+/* ================= PHASE 5 ï¿½ AUTOMATION PROJECTS ================= */
 
 export async function createAutomation(raw: unknown): Promise<ActionResult> {
   try {
@@ -1264,7 +1354,7 @@ export async function submitPhase(raw: unknown): Promise<ActionResult> {
       return { ok: false, error: 'Only the phase owner (or project owner) can submit.' };
     }
     if (phase.dependsOn && phase.dependsOn.status !== 'APPROVED') {
-      return { ok: false, error: `Phase "${phase.dependsOn.title}" must be approved first � its prerequisite is not satisfied.` };
+      return { ok: false, error: `Phase "${phase.dependsOn.title}" must be approved first ï¿½ its prerequisite is not satisfied.` };
     }
     if (phase.status === 'APPROVED') return { ok: false, error: 'Phase is already approved. Add a new phase instead.' };
     const lastVersion = await db.phaseSubmission.findFirst({ where: { phaseId: phase.id }, orderBy: { version: 'desc' } });
@@ -1316,7 +1406,7 @@ export async function reviewPhase(raw: unknown): Promise<ActionResult> {
     }
     await logActivity(u.id, approved ? 'Phase approved' : 'Phase changes requested', `${submission.phase.title} v${submission.version}`);
     revalidatePath(`/workspace/automation/${submission.phase.projectId}`);
-    return okRes(approved ? 'Phase approved � dependent phases may now proceed.' : 'Changes requested.');
+    return okRes(approved ? 'Phase approved ï¿½ dependent phases may now proceed.' : 'Changes requested.');
   } catch (e) {
     return fail(e);
   }
@@ -1356,7 +1446,7 @@ export async function assembleDelivery(raw: unknown): Promise<ActionResult> {
       },
     });
     if (project.deliveryAcceptedById !== u.id && project.ownerId && project.ownerId !== u.id) {
-      await db.notification.create({ data: { userId: project.ownerId, type: 'DELIVERY_PENDING', title: `Final delivery assembled for "${project.name}" � awaiting acceptance`, link: `/workspace/automation/${project.id}` } });
+      await db.notification.create({ data: { userId: project.ownerId, type: 'DELIVERY_PENDING', title: `Final delivery assembled for "${project.name}" ï¿½ awaiting acceptance`, link: `/workspace/automation/${project.id}` } });
     }
     await logActivity(u.id, 'Final delivery assembled', project.name);
     revalidatePath(`/workspace/automation/${project.id}`);
@@ -1394,7 +1484,7 @@ export async function acceptDelivery(raw: unknown): Promise<ActionResult> {
   }
 }
 
-/* ================= PHASE 7 — GITHUB CONNECTIONS & DEPLOYS ================= */
+/* ================= PHASE 7 â€” GITHUB CONNECTIONS & DEPLOYS ================= */
 
 export async function connectGithub(raw: unknown): Promise<ActionResult> {
   try {
@@ -1470,7 +1560,7 @@ export async function deployProject(raw: unknown): Promise<ActionResult> {
       out = await createDeployment(conn.vercelProjectId, conn.vercelTeamId ?? undefined, input.production ? 'production' : 'preview');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      const friendly = msg.startsWith('NOT_CONFIGURED') ? 'VERCEL_TOKEN not configured in this environment.' : msg.startsWith('VERCEL ') ? `Vercel API error — ${msg.slice(0, 240)}` : msg.slice(0, 240);
+      const friendly = msg.startsWith('NOT_CONFIGURED') ? 'VERCEL_TOKEN not configured in this environment.' : msg.startsWith('VERCEL ') ? `Vercel API error â€” ${msg.slice(0, 240)}` : msg.slice(0, 240);
       await db.deploymentRecord.create({
         data: {
           projectId: conn.projectId,
@@ -1491,7 +1581,7 @@ export async function deployProject(raw: unknown): Promise<ActionResult> {
         previewUrl: out.url ?? null,
       },
     });
-    await db.activity.create({ data: { message: `Vercel deploy started (${record.environment})`, detail: `${conn.project.name} → ${out.url ?? out.vercelId}`, userId: u.id } });
+    await db.activity.create({ data: { message: `Vercel deploy started (${record.environment})`, detail: `${conn.project.name} â†’ ${out.url ?? out.vercelId}`, userId: u.id } });
     revalidatePath('/workspace/vercel');
     return okRes(`Deploy queued: ${out.url ?? out.vercelId}`);
   } catch (e) {
@@ -1499,7 +1589,7 @@ export async function deployProject(raw: unknown): Promise<ActionResult> {
   }
 }
 
-/* ================= PHASE 8 — TEMPLATE CATEGORIES & IMPORT ================= */
+/* ================= PHASE 8 â€” TEMPLATE CATEGORIES & IMPORT ================= */
 
 export async function importTemplate(raw: unknown): Promise<ActionResult> {
   try {
@@ -1538,9 +1628,10 @@ export async function importTemplate(raw: unknown): Promise<ActionResult> {
     });
     await logActivity(u.id, 'Template imported', `${t.name} (${input.kind})`);
     revalidatePath('/workspace/templates');
-    return okRes(`Template imported: ${t.name} — review its steps, framework and env vars.`);
+    return okRes(`Template imported: ${t.name} â€” review its steps, framework and env vars.`);
   } catch (e) {
     return fail(e);
   }
 }
+
 

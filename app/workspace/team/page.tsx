@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { db } from '@/lib/db';
 import { formatDate } from '@/lib/format';
 import { addTeamUser, deleteTeamUser, resetTeamPassword } from '@/lib/actions';
@@ -10,11 +11,13 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
   const { q } = await searchParams;
   const query = (q ?? '').trim();
 
-  const users = await db.user.findMany({
-    where: query ? { OR: [{ name: { contains: query, mode: 'insensitive' } }, { email: { contains: query, mode: 'insensitive' } }] } : {},
-    orderBy: { createdAt: 'asc' },
-  });
-  const openByUser = await db.task.groupBy({ by: ['assigneeId'], _count: { _all: true }, where: { status: { not: 'DONE' } } });
+  const [users, openByUser] = await Promise.all([
+    db.user.findMany({
+      where: query ? { OR: [{ name: { contains: query, mode: 'insensitive' } }, { email: { contains: query, mode: 'insensitive' } }] } : {},
+      orderBy: { createdAt: 'asc' },
+    }),
+    db.task.groupBy({ by: ['assigneeId'], _count: { _all: true }, where: { status: { not: 'DONE' } } }),
+  ]);
   const openMap = new Map(openByUser.map((o) => [o.assigneeId, o._count._all]));
 
   return (
@@ -45,11 +48,22 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
           <tbody>
             {users.map((u) => (
               <tr key={u.id}>
-                <td><strong>{u.name}</strong><div className="itemsub">{u.email}</div></td>
+                <td>
+                  <Link href={`/workspace/profile/${u.id}`} className="profilelink">
+                    <strong>{u.name}</strong>
+                    <div className="itemsub">{u.email}</div>
+                  </Link>
+                </td>
                 <td><span className={`pill ${u.role === 'ADMIN' ? 'won' : ''}`}>{u.role === 'ADMIN' ? '★ Admin' : 'Member'}</span></td>
                 <td>{openMap.get(u.id) ?? 0}</td>
                 <td>{formatDate(u.createdAt)}</td>
                 <td style={{ display: 'flex', gap: 6 }}>
+                  <Link
+                    href={`/workspace/profile/${u.id}`}
+                    className="btn sq"
+                    aria-label={`Open profile of ${u.name}`}
+                    title="View profile"
+                  >☺</Link>
                   <ModalForm
                     title={`Reset password — ${u.name}`}
                     trigger=" Reset PW"

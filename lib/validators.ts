@@ -11,11 +11,12 @@ const dateish = z
   .transform((v) => (v ? new Date(v) : null))
   .refine((d) => d === null || !Number.isNaN(d.getTime()), 'Invalid date');
 
-const intOrEmpty = z
+/** Accept empty string or a string ID (cuid/uuid). Never coerce to number. */
+const idOrEmpty = z
   .string()
   .optional()
-  .transform((v) => (v === undefined || v === '' ? null : Number(v)))
-  .refine((d) => d === null || Number.isInteger(d), 'Invalid number');
+  .transform((v) => (v === undefined || v === '' || v === 'auto' ? null : v.trim()))
+  .refine((d) => d === null || d.length > 0, 'Invalid id');
 
 export const leadSchema = z.object({
   name: z.string().trim().min(1, 'Name is required').max(120),
@@ -25,7 +26,7 @@ export const leadSchema = z.object({
   status: z.enum(['NEW', 'CONTACTED', 'QUALIFIED', 'PROPOSAL_SENT', 'WON', 'LOST']),
   estValue: z.coerce.number().int().min(0).max(1_000_000_000).default(0),
   nextFollowUp: dateish,
-  ownerId: intOrEmpty.transform((v) => (typeof v === 'number' && v !== null ? String(v) : null)),
+  ownerId: idOrEmpty,
 });
 
 export const leadStatusSchema = z.object({
@@ -36,12 +37,12 @@ export const leadStatusSchema = z.object({
 export const projectSchema = z.object({
   name: z.string().trim().min(1).max(140),
   clientName: z.string().trim().min(1).max(140),
-  leadId: intOrEmpty.transform((v) => (typeof v === 'number' && v !== null ? String(v) : null)),
+  leadId: idOrEmpty,
   service: z.string().trim().min(1).max(80),
   status: z.enum(['PLANNING', 'IN_PROGRESS', 'REVIEW', 'DELIVERED', 'COMPLETED']),
   progress: z.coerce.number().int().min(0).max(100).default(0),
   dueDate: dateish,
-  ownerId: intOrEmpty.transform((v) => (typeof v === 'number' && v !== null ? String(v) : null)),
+  ownerId: idOrEmpty,
   budget: z.coerce.number().int().min(0).max(1_000_000_000).default(0),
 });
 
@@ -56,8 +57,8 @@ export const taskSchema = z.object({
     .string()
     .optional()
     .transform((v) => (v && v.trim() ? v.trim().slice(0, 2000) : null)),
-  projectId: intOrEmpty.transform((v) => (typeof v === 'number' && v !== null ? String(v) : null)),
-  assigneeId: intOrEmpty.transform((v) => (typeof v === 'number' && v !== null ? String(v) : null)),
+  projectId: idOrEmpty,
+  assigneeId: idOrEmpty,
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH']),
   status: z.enum(['TODO', 'IN_PROGRESS', 'DONE', 'BLOCKED']),
   startDate: dateish,
@@ -77,7 +78,7 @@ export const financeSchema = z.object({
   amount: z.coerce.number().int().min(0).max(1_000_000_000),
   status: z.enum(['PENDING', 'RECEIVED', 'PAID', 'OVERDUE']),
   date: z.string().min(1).transform((v) => new Date(v)).refine((d) => !Number.isNaN(d.getTime()), 'Invalid date'),
-  projectId: intOrEmpty.transform((v) => (typeof v === 'number' && v !== null ? String(v) : null)),
+  projectId: idOrEmpty,
 });
 
 export const userAdminSchema = z.object({
@@ -85,6 +86,13 @@ export const userAdminSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
   role: z.enum(['ADMIN', 'MEMBER']),
   password: z.string().min(8, 'Password must be at least 8 characters').max(100).optional(),
+});
+
+export const userUpdateSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().trim().min(1).max(80),
+  email: z.string().trim().toLowerCase().email('Enter a valid email'),
+  role: z.enum(['ADMIN', 'MEMBER']),
 });
 
 export const settingsSchema = z.object({

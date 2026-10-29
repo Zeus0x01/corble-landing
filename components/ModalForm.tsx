@@ -44,6 +44,8 @@ export default function ModalForm({
     fd.forEach((v, k) => {
       data[k] = String(v);
     });
+    // New records: form may send id="auto" — strip it so create actions ignore it
+    if (data.id === 'auto' || data.id === '') delete data.id;
     const res = await action(data);
     setBusy(false);
     if (!res.ok) {

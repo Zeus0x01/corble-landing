@@ -1,4 +1,4 @@
-node_modules/
+﻿node_modules/
 .next/
 data/
 5od.zip
@@ -28,3 +28,4 @@ index.html
 
 tsconfig.tsbuildinfo
 *.tsbuildinfo
+
