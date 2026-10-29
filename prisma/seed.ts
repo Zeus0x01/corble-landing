@@ -1,4 +1,4 @@
-import { PrismaClient, LeadStatus, ProjectStatus, TaskStatus, TaskPriority, FinanceType, FinanceStatus, Role } from '@prisma/client';
+import { PrismaClient, LeadStatus, ProjectStatus, TaskStatus, TaskPriority, FinanceType, FinanceStatus, Role, TemplateKind, PhaseStatus } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -168,19 +168,110 @@ async function main() {
         name: 'Business Website',
         description: 'Standard 5-page business website in 2 weeks.',
         steps: ['Discovery call', 'Sitemap & copy', 'Design', 'Build', 'QA & launch'],
+        kind: TemplateKind.WEBSITE,
+        source: 'manual',
+        framework: 'Next.js',
+        envVarNames: ['DATABASE_URL', 'AUTH_SECRET'],
       },
       {
         name: 'Booking Automation',
         description: 'WhatsApp-first booking and follow-up automation.',
         steps: ['Map current flow', 'Connect WhatsApp Business', 'Build booking flows', 'Train staff', 'Go live'],
+        kind: TemplateKind.AUTOMATION,
+        source: 'manual',
+        envVarNames: ['WHATSAPP_TOKEN', 'N8N_WEBHOOK_URL'],
       },
       {
         name: 'Security Review',
         description: 'Baseline security assessment for small businesses.',
         steps: ['Access audit', 'Risk report', 'Fix list', 'Remediation', 'Re-test'],
+        kind: TemplateKind.AUTOMATION,
+        source: 'manual',
       },
     ],
   });
+
+  const importBatch = await prisma.leadImportBatch.create({
+    data: { filename: 'kickoff-incoming-leads.csv', totalRows: 4, validRows: 3, invalidRows: 0, duplicateRows: 1 },
+  });
+  await prisma.incomingLead.createMany({
+    data: [
+      {
+        company: 'Smile Center Clinic',
+        contactPerson: 'Dr. Maya Habib',
+        email: 'frontdesk@smilecenter.eg',
+        phone: '+20 100 555 1810',
+        website: 'https://smilecenter.eg',
+        domain: 'smilecenter.eg',
+        industry: 'Dental',
+        location: 'Cairo, EG',
+        source: 'n8n: booking-form scraper',
+        workflowId: 'wf-scraper-01',
+        externalId: 'rec-1042',
+        rawPayload: { company: 'Smile Center Clinic', email: 'frontdesk@smilecenter.eg', website: 'https://smilecenter.eg', extra: 'scraped from booking page' },
+        normalized: { email: 'frontdesk@smilecenter.eg', domain: 'smilecenter.eg' },
+        processingStatus: 'NEW',
+        batchId: importBatch.id,
+        importBatchId: importBatch.id,
+      },
+      {
+        company: 'Glow Fitness Studio',
+        email: 'hello@glowfit.ma',
+        website: 'https://glowfit.ma',
+        domain: 'glowfit.ma',
+        industry: 'Fitness',
+        location: 'Casablanca, MA',
+        source: 'n8n: instagram dm parser',
+        workflowId: 'wf-igdm-02',
+        externalId: 'rec-1077',
+        rawPayload: { company: 'Glow Fitness Studio', email: 'hello@glowfit.ma' },
+        processingStatus: 'NEW',
+      },
+      {
+        company: 'Petit Pret Retail',
+        email: 'buyer@petitpret.com',
+        industry: 'Retail',
+        source: 'Manual research',
+        workflowId: null,
+        externalId: null,
+        rawPayload: { company: 'Petit Pret Retail', email: 'buyer@petitpret.com' },
+        processingStatus: 'UNDER_REVIEW',
+        researchNotes: 'Reached out on 10-24, awaiting purchasing manager reply.',
+      },
+      {
+        company: 'Smile Center Clinic',
+        email: 'frontdesk@smilecenter.eg',
+        source: 'n8n: booking-form scraper',
+        workflowId: 'wf-scraper-01',
+        externalId: 'rec-1042-dup',
+        rawPayload: { company: 'Smile Center Clinic' },
+        processingStatus: 'DUPLICATE',
+        batchId: importBatch.id,
+        importBatchId: importBatch.id,
+      },
+    ],
+  });
+
+  const automation = await prisma.automationProject.create({
+    data: {
+      name: 'Clinic Booking Automation',
+      description: 'End-to-end booking pipeline: WhatsApp intake, calendar sync, reminder flows.',
+      status: ProjectStatus.IN_PROGRESS,
+      ownerId: nour.id,
+      maintainerId: youssef.id,
+      githubRepo: 'Zeus0x01/booking-automation',
+    },
+  });
+  const phaseIntake = await prisma.automationPhase.create({
+    data: { projectId: automation.id, title: 'Phase 1 — WhatsApp intake flow', description: 'Capture patient details via WhatsApp template flows.', order: 1, status: PhaseStatus.NOT_STARTED, ownerId: nour.id },
+  });
+  await prisma.automationPhase.createMany({
+    data: [
+      { projectId: automation.id, title: 'Phase 2 — Calendar & reminder sync', description: 'Two-way Google Calendar sync and 24h reminder messages.', order: 2, status: PhaseStatus.NOT_STARTED, ownerId: youssef.id },
+      { projectId: automation.id, title: 'Phase 3 — Staff dashboard handover', description: 'Daily bookings digest and training material for clinic staff.', order: 3, status: PhaseStatus.NOT_STARTED, ownerId: ahmed.id, dueDate: new Date('2026-11-15'), dependsOnId: phaseIntake.id },
+    ],
+  });
+  await prisma.notification.deleteMany({ where: { type: 'SEED' } });
 
   await prisma.activity.createMany({
     data: [

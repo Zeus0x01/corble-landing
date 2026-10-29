@@ -1,14 +1,12 @@
-import Link from 'next/link';
+﻿import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { db } from '@/lib/db';
 import { auth } from '@/lib/auth';
-import { useToast } from '@/app/workspace/Shell';
 import { labelize, formatDate } from '@/lib/format';
-import { addPhase, submitPhase, reviewPhase, assembleDelivery, acceptDelivery } from '@/lib/actions';
+import { addPhase, assembleDelivery } from '@/lib/actions';
 import ModalForm from '@/components/ModalForm';
 import PhaseActions from './PhaseActions';
+import { AcceptDelivery, ReviewButtons } from './AutomationClient';
 import type { FieldSpec } from '@/lib/validators';
 
 export const dynamic = 'force-dynamic';
@@ -127,7 +125,7 @@ export default async function AutomationProjectPage({ params }: { params: Promis
                     </td>
                     <td>{ph.owner?.name ?? '—'}</td>
                     <td>{dependency ? <span className="itemsub">{dependency.title} · {labelize(dependency.status)}</span> : '—'}</td>
-                    <td style={blocked ? undefined : { color: ph.dueDate && ph.status !== 'APPROVED' && ph.dueDate < new Date() ? 'var(--acid)' : undefined }}>{formatDate(ph.dueDate)}</td>
+                    <td style={{ color: !blocked && ph.dueDate && ph.status !== 'APPROVED' && ph.dueDate < new Date() ? 'var(--acid)' : undefined }}>{formatDate(ph.dueDate)}</td>
                     <td><span className="pill" style={ph.status === 'APPROVED' ? { color: 'var(--green)' } : ph.status === 'CHANGES_REQUESTED' ? { color: 'var(--acid)' } : undefined}>{labelize(ph.status)}</span></td>
                     <td>
                       {latest ? (
@@ -175,44 +173,4 @@ export default async function AutomationProjectPage({ params }: { params: Promis
 function decodeAssembledAt(v: string): Date {
   const parsed = new Date(v);
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
-}
-
-function AcceptDelivery({ projectId, disabled }: { projectId: string; disabled: boolean }) {
-  const toast = useToast();
-  const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  return (
-    <button
-      className="btn"
-      disabled={disabled || busy}
-      onClick={async () => {
-        setBusy(true);
-        const res = await acceptDelivery({ projectId });
-        setBusy(false);
-        toast(res.error ?? res.message ?? '', res.ok ? 'ok' : 'err');
-        if (res.ok) router.refresh();
-      }}
-    >
-      ✓ Accept delivery
-    </button>
-  );
-}
-
-function ReviewButtons({ submissionId, phaseTitle }: { submissionId: string; phaseTitle: string }) {
-  const toast = useToast();
-  const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  async function act(decision: 'APPROVED' | 'CHANGES_REQUESTED') {
-    setBusy(true);
-    const res = await reviewPhase({ submissionId, decision, comment: decision === 'APPROVED' ? undefined : 'Please address the feedback.' });
-    setBusy(false);
-    toast(res.error ?? res.message ?? `Review recorded for ${phaseTitle}.`, res.ok ? 'ok' : 'err');
-    if (res.ok) router.refresh();
-  }
-  return (
-    <>
-      <button className="btn sq" disabled={busy} onClick={() => act('APPROVED')} title="Approve phase" aria-label={`Approve ${phaseTitle}`}>✓</button>
-      <button className="btn sq" disabled={busy} onClick={() => act('CHANGES_REQUESTED')} title="Request changes" aria-label={`Request changes on ${phaseTitle}`}>✎</button>
-    </>
-  );
 }

@@ -974,7 +974,7 @@ export async function reviewDeliverable(raw: unknown): Promise<ActionResult> {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-export function domainOf(value: string | null | undefined): string | null {
+function domainOf(value: string | null | undefined): string | null {
   if (!value) return null;
   let v = value.trim().toLowerCase();
   if (v.includes('@')) v = v.split('@')[1];
