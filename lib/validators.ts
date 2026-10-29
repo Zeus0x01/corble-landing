@@ -251,7 +251,7 @@ export const acceptDeliverySchema = z.object({
 });
 
 export const githubConnectSchema = z.object({
-  projectId: z.string().min(1),
+  projectId: z.string().min(1).optional(),
   owner: z.string().trim().min(1).max(100),
   repo: z.string().trim().min(1).max(100),
   branch: z.string().trim().min(1).max(120).default('main'),

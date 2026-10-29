@@ -1494,9 +1494,28 @@ export async function connectGithub(raw: unknown): Promise<ActionResult> {
     const { repoExists } = await import('@/lib/github');
     const check = await repoExists(input.owner, input.repo);
     if (!check.ok) return { ok: false, error: `GitHub says no access to ${input.owner}/${input.repo} (status ${check.status ?? 'unknown'}). Check GITHUB_TOKEN and repo casing.` };
+
+    // Resolve target project: explicit pick, else attach an unlinked project, else auto-create one for the repo.
+    let projectId = input.projectId && input.projectId !== 'auto' ? input.projectId : null;
+    if (!projectId) {
+      const free = await db.project.findFirst({
+        where: { githubConnections: { none: {} } },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      });
+      if (free) projectId = free.id;
+    }
+    if (!projectId) {
+      const title = input.repo.replace(/[-_.]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+      const created = await db.project.create({
+        data: { name: title.slice(0, 120), clientName: input.owner.slice(0, 120), service: 'Website', status: 'PLANNING', ownerId: u.id },
+        select: { id: true },
+      });
+      projectId = created.id;
+    }
     const conn = await db.gitHubConnection.upsert({
-      where: { projectId: input.projectId },
-      create: { projectId: input.projectId, owner: input.owner, repo: input.repo, branch: input.branch, repoId: check.id ? String(check.id) : null, connectedById: u.id, status: 'connected' },
+      where: { projectId },
+      create: { projectId, owner: input.owner, repo: input.repo, branch: input.branch, repoId: check.id ? String(check.id) : null, connectedById: u.id, status: 'connected' },
       update: { owner: input.owner, repo: input.repo, branch: input.branch, repoId: check.id ? String(check.id) : null, connectedById: u.id, status: 'connected' },
     });
     await logActivity(u.id, 'GitHub repo connected', `${input.owner}/${input.repo} (${conn.branch})`);

@@ -52,14 +52,11 @@ export default function RepoConnect({ projects }: { projects: { id: string; name
   const list = repos.filter((r) => r.fullName.toLowerCase().includes(q.toLowerCase().trim()));
 
   async function connect(repo: Repo) {
-    const projectId = pickedProject[repo.id];
-    if (!projectId) {
-      toast('Choose a project for this repo first.', 'err');
-      return;
-    }
+    const pid = pickedProject[repo.id] ?? '';
+    const projectId = pid || undefined;
     const b = (branch[repo.id] ?? '').trim() || repo.defaultBranch || 'main';
     setBusy(String(repo.id));
-    const res = await connectGithub({ projectId, owner: repo.owner, repo: repo.name, branch: b });
+    const res = await connectGithub({ ...(projectId ? { projectId } : {}), owner: repo.owner, repo: repo.name, branch: b });
     setBusy(null);
     toast(res.error ?? res.message ?? 'Connected.', res.ok ? 'ok' : 'err');
     if (res.ok) {
@@ -88,7 +85,7 @@ export default function RepoConnect({ projects }: { projects: { id: string; name
               <button type="button" className="btn sq" onClick={() => setOpen(false)} aria-label="Close dialog">✕</button>
             </div>
             <div className="sub" style={{ marginBottom: 10 }}>
-              Repos the PAT can reach — pick one and attach it to a website project.
+              Pick a repo → Connect. A project is created automatically unless you attach an existing one below the name.
             </div>
             <input
               placeholder="Filter by name or owner…"
@@ -127,7 +124,7 @@ export default function RepoConnect({ projects }: { projects: { id: string; name
                         style={{ flex: '1 1 220px', minWidth: 0 }}
                         aria-label={`Project for ${repo.fullName}`}
                       >
-                        <option value="">— choose project —</option>
+                        <option value="">— new project (auto-created) —</option>
                         {unlinked.map((p) => (
                           <option key={p.id} value={p.id}>{p.name}</option>
                         ))}
@@ -142,9 +139,9 @@ export default function RepoConnect({ projects }: { projects: { id: string; name
                       <button
                         type="button"
                         className="btn primary"
-                        disabled={Boolean(busy) || unlinked.length === 0}
+                        disabled={Boolean(busy)}
                         onClick={() => connect(repo)}
-                        title={unlinked.length ? `Connect ${repo.fullName} to the selected project` : 'All projects already have a connection'}
+                        title={`Connect ${repo.fullName}`}
                       >
                         {busy === String(repo.id) ? 'Connecting…' : 'Connect'}
                       </button>
