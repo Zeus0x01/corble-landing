@@ -17,29 +17,31 @@ export default async function AutomationProjectPage({ params }: { params: Promis
   const me = session?.user?.id as string;
   const role = (session?.user?.role ?? 'MEMBER') as string;
 
-  const project = await db.automationProject.findUnique({
-    where: { id },
-    include: {
-      owner: { select: { name: true } },
-      maintainer: { select: { name: true } },
-      websiteProject: { select: { id: true, name: true } },
-      phases: {
-        orderBy: { order: 'asc' },
-        include: {
-          owner: { select: { name: true } },
-          dependsOn: { select: { title: true, status: true } },
-          submissions: {
-            orderBy: { version: 'desc' },
-            include: { author: { select: { name: true } }, reviewer: { select: { name: true } } },
+  const [project, users] = await Promise.all([
+    db.automationProject.findUnique({
+      where: { id },
+      include: {
+        owner: { select: { name: true } },
+        maintainer: { select: { name: true } },
+        websiteProject: { select: { id: true, name: true } },
+        phases: {
+          orderBy: { order: 'asc' },
+          include: {
+            owner: { select: { name: true } },
+            dependsOn: { select: { title: true, status: true } },
+            submissions: {
+              orderBy: { version: 'desc' },
+              include: { author: { select: { name: true } }, reviewer: { select: { name: true } } },
+            },
+            deliverables: { select: { id: true, title: true, status: true } },
           },
-          deliverables: { select: { id: true, title: true, status: true } },
         },
       },
-    },
-  });
+    }),
+    db.user.findMany({ where: { isActive: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+  ]);
   if (!project) notFound();
-
-  const users = await db.user.findMany({ where: { isActive: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } });
+  const otherUsers = users.filter((u) => u.id !== me);
 
   const isOwner = project.ownerId === me || role === 'ADMIN';
   const approved = project.phases.filter((ph) => ph.status === 'APPROVED').length;
@@ -51,7 +53,7 @@ export default async function AutomationProjectPage({ params }: { params: Promis
     const openPhases = project.phases.filter((ph) => ph.status === 'APPROVED' || ph.status === 'IN_PROGRESS');
     return [
       { label: 'Phase title', name: 'title', required: true, value: '' },
-      { label: 'Owner', name: 'ownerId', type: 'select', options: [{ value: '', label: 'Me' }, ...users.map((u) => ({ value: u.id, label: u.name }))], value: '' },
+      { label: 'Owner', name: 'ownerId', type: 'select', options: [{ value: '', label: 'Me' }, ...otherUsers.map((u) => ({ value: u.id, label: u.name }))], value: '' },
       { label: 'Due date', name: 'dueDate', type: 'date', value: '' },
       { label: 'Depends on phase', name: 'dependsOnId', type: 'select', full: true, options: [{ value: '', label: 'Nothing (parallel start)' }, ...openPhases.map((ph) => ({ value: ph.id, label: `${ph.title} (${labelize(ph.status)})` }))], value: '' },
       { label: 'Requirements / what must be built', name: 'description', type: 'text', full: true, value: '' },

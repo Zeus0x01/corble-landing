@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { after } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import type {
@@ -85,15 +86,14 @@ function okRes(message: string): ActionResult {
 
 type BrandedMail = Parameters<typeof notifyBranded>[0];
 /** Fire-and-forget branded email; never let mail failures bubble into actions. */
-async function sendBrandedMail(a: BrandedMail) {
-  try {
-    const r = await notifyBranded(a);
-    if (!r?.ok) console.warn('[mail] event email skipped:', r?.error ?? 'unknown');
-  } catch (e) {
-    console.error('[mail] event email crashed:', e);
-  }
+function sendBrandedMail(a: BrandedMail) {
+  return notifyBranded(a)
+    .then((r) => {
+      if (!r?.ok) console.warn('[mail] event email skipped:', r?.error ?? 'unknown');
+    })
+    .catch((e) => console.error('[mail] event email crashed:', e));
 }
-/** Look up a user's email/name then send the branded mail (no-op when unconfigured). */
+/** Look up a user's email/name then send the branded mail (no-op when unconfigured). The send runs in `after()` so it never delays the action response. */
 async function mailUser(
   userId: string | null | undefined,
   build: (p: { email: string; name: string }) => Omit<BrandedMail, 'to' | 'headingName'>
@@ -101,11 +101,12 @@ async function mailUser(
   if (!userId) return;
   const usr = await db.user.findUnique({ where: { id: userId }, select: { email: true, name: true } });
   if (!usr?.email) return;
-  await sendBrandedMail({
+  const mail: BrandedMail = {
     ...build({ email: usr.email, name: usr.name }),
     to: usr.email,
     headingName: usr.name,
-  });
+  };
+  after(() => sendBrandedMail(mail));
 }
 const FOOTER = 'You are receiving this because of activity on your assigned work in Corble Workspace.';
 
@@ -125,22 +126,20 @@ async function notifyAssigneeIfAny(
     const p = await db.project.findUnique({ where: { id: task.projectId }, select: { name: true } });
     projectName = p?.name ?? null;
   }
-  const result = await notifyTaskAssigned({
-    assigneeEmail: assignee.email,
-    assigneeName: assignee.name,
-    taskTitle: task.title,
-    priority: task.priority,
-    status: task.status,
-    dueDate: task.dueDate,
-    assignedBy: assignedByName,
-    projectName,
-  }).catch((e) => {
-    console.error('[mail] task-assignment email crashed:', e);
-    return { ok: false, error: 'Email send crashed' };
-  });
-  if (result && !result.ok) {
-    console.warn('[mail] Task assignment email NOT sent to', assignee.email, 'Â· reason:', result.error);
-  }
+  after(() =>
+    notifyTaskAssigned({
+      assigneeEmail: assignee.email,
+      assigneeName: assignee.name,
+      taskTitle: task.title,
+      priority: task.priority,
+      status: task.status,
+      dueDate: task.dueDate,
+      assignedBy: assignedByName,
+      projectName,
+    }).catch((e) => {
+      console.error('[mail] task-assignment email crashed:', e);
+    })
+  );
 }
 
 /* ------------------------------ LEADS ------------------------------ */
@@ -1156,7 +1155,7 @@ export async function submitDeliverable(raw: unknown): Promise<ActionResult> {
 export async function submitNewVersion(raw: unknown): Promise<ActionResult> {
   try {
     const u = await requireUser();
-    const input = deliverableSchema.partial({ externalUrl: true, fileId: true }).parse(raw);
+    const input = deliverableSchema.partial({ externalUrl: true, fileId: true, title: true }).parse(raw);
     const old = await db.deliverable.findUnique({
       where: { id: input.taskId },
       include: { versions: { orderBy: { version: 'desc' }, take: 1 } },

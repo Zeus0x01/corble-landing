@@ -25,24 +25,26 @@ export default async function DeliverablesPage({ searchParams }: { searchParams:
   if (status) filters.push({ status });
   if (query) filters.push({ title: { contains: query, mode: 'insensitive' } });
 
-  const deliverables = await db.deliverable.findMany({
-    where: filters.length ? { AND: filters } : {},
-    orderBy: [{ updatedAt: 'desc' }],
-    include: {
-      task: { select: { title: true, project: { select: { name: true } } } },
-      phase: { select: { title: true } },
-      createdBy: { select: { name: true } },
-      versions: {
-        orderBy: { version: 'desc' },
-        include: { submittedBy: { select: { name: true } }, reviews: { orderBy: { createdAt: 'desc' }, include: { reviewer: { select: { name: true } } } } },
+  const [deliverables, myTasks] = await Promise.all([
+    db.deliverable.findMany({
+      where: filters.length ? { AND: filters } : {},
+      orderBy: [{ updatedAt: 'desc' }],
+      include: {
+        task: { select: { title: true, project: { select: { name: true } } } },
+        phase: { select: { title: true } },
+        createdBy: { select: { name: true } },
+        versions: {
+          orderBy: { version: 'desc' },
+          include: { submittedBy: { select: { name: true } }, reviews: { orderBy: { createdAt: 'desc' }, include: { reviewer: { select: { name: true } } } } },
+        },
       },
-    },
-  });
-  const myTasks = await db.task.findMany({
-    where: { assigneeId: me },
-    select: { id: true, title: true, status: true },
-    orderBy: { title: 'asc' },
-  });
+    }),
+    db.task.findMany({
+      where: { assigneeId: me },
+      select: { id: true, title: true, status: true },
+      orderBy: { title: 'asc' },
+    }),
+  ]);
 
   const fields = (): FieldSpec[] => [
     { label: 'Task', name: 'taskId', type: 'select', required: true, full: true, options: myTasks.map((t) => ({ value: t.id, label: `${t.title} (${labelize(t.status)})` })) },

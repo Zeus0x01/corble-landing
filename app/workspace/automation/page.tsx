@@ -13,21 +13,24 @@ export default async function AutomationPage() {
   const me = session?.user?.id as string;
   const role = (session?.user?.role ?? 'MEMBER') as string;
 
-  const projects = await db.automationProject.findMany({
-    orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
-    include: {
-      owner: { select: { name: true } },
-      maintainer: { select: { name: true } },
-      websiteProject: { select: { id: true, name: true } },
-      phases: { select: { id: true, title: true, status: true, order: true, dueDate: true, ownerId: true, dependsOnId: true } },
-    },
-  });
-  const users = await db.user.findMany({ where: { isActive: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } });
-  const webProjects = await db.project.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } });
+  const [projects, users, webProjects] = await Promise.all([
+    db.automationProject.findMany({
+      orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+      include: {
+        owner: { select: { name: true } },
+        maintainer: { select: { name: true } },
+        websiteProject: { select: { id: true, name: true } },
+        phases: { select: { id: true, title: true, status: true, order: true, dueDate: true, ownerId: true, dependsOnId: true } },
+      },
+    }),
+    db.user.findMany({ where: { isActive: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+    db.project.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+  ]);
+  const otherUsers = users.filter((u) => u.id !== me);
 
   const createFields: FieldSpec[] = [
     { label: 'Automation name', name: 'name', required: true, value: '' },
-    { label: 'Owner', name: 'ownerId', type: 'select', options: [{ value: '', label: 'Me' }, ...users.map((u) => ({ value: u.id, label: u.name }))], value: '' },
+    { label: 'Owner', name: 'ownerId', type: 'select', options: [{ value: '', label: 'Me' }, ...otherUsers.map((u) => ({ value: u.id, label: u.name }))], value: '' },
     { label: 'Maintainer', name: 'maintainerId', type: 'select', options: [{ value: '', label: 'None yet' }, ...users.map((u) => ({ value: u.id, label: u.name }))], value: '' },
     { label: 'GitHub repo (oecd/repo format)', name: 'githubRepo', value: '' },
     { label: 'Website project link', name: 'websiteProjectId', type: 'select', full: true, options: [{ value: '', label: 'None' }, ...webProjects.map((p) => ({ value: p.id, label: p.name }))], value: '' },
