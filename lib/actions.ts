@@ -1405,6 +1405,46 @@ export async function bulkRejectIncoming(raw: unknown): Promise<ActionResult> {
   }
 }
 
+export async function deleteIncoming(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const id = z.string().min(1).parse(raw);
+    const lead = await db.incomingLead.findUnique({ where: { id }, select: { company: true, processingStatus: true } });
+    if (!lead) return { ok: false, error: 'Incoming lead not found.' };
+    if (lead.processingStatus === 'PROMOTED') return { ok: false, error: 'Already promoted — delete the final lead instead.' };
+    await db.incomingLead.delete({ where: { id } });
+    await logActivity(u.id, 'Incoming lead deleted', lead.company);
+    revalidatePath('/workspace/leads/incoming');
+    revalidatePath('/workspace');
+    return okRes('Incoming lead deleted.');
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function bulkDeleteIncoming(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const ids = z.array(z.string().min(1)).min(1).parse(raw);
+    let skipped = 0;
+    for (const id of ids) {
+      const lead = await db.incomingLead.findUnique({ where: { id }, select: { processingStatus: true } });
+      if (!lead || lead.processingStatus === 'PROMOTED') {
+        skipped++;
+        continue;
+      }
+      await db.incomingLead.delete({ where: { id } });
+    }
+    const n = ids.length - skipped;
+    await logActivity(u.id, 'Incoming leads bulk-deleted', `${n} deleted (skipped: ${skipped} promoted)`);
+    revalidatePath('/workspace/leads/incoming');
+    revalidatePath('/workspace');
+    return okRes(n ? `${n} incoming lead${n === 1 ? '' : 's'} deleted.${skipped ? ` ${skipped} skipped (promoted).` : ''}` : 'Nothing deleted — all selected were promoted.');
+  } catch (e) {
+    return fail(e);
+  }
+}
+
 export async function promoteToFinal(raw: unknown): Promise<ActionResult> {
   try {
     const u = await requireUser();

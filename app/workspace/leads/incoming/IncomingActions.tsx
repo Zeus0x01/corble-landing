@@ -3,8 +3,9 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/app/workspace/Shell';
-import { runVerification, addResearch, rejectIncoming, promoteToFinal } from '@/lib/actions';
+import { runVerification, addResearch, rejectIncoming, deleteIncoming, promoteToFinal } from '@/lib/actions';
 import ModalForm from '@/components/ModalForm';
+import ConfirmAction from '@/components/ConfirmAction';
 import type { FieldSpec } from '@/lib/validators';
 
 type Props = {
@@ -59,6 +60,9 @@ export default function IncomingActions(p: Props) {
           <span className="pill">rejected</span>
           <button className="btn" disabled={busy} onClick={() => run(() => rejectIncoming({ incomingId: p.leadId, restore: true }))}>Restore</button>
         </>
+      ) : null}
+      {!promoted ? (
+        <ConfirmAction action={deleteIncoming} payload={p.leadId} label={`Delete ${p.company}`} confirmText={`Permanently delete incoming lead "${p.company}"? This cannot be undone.`} className="btn sq danger">🗑</ConfirmAction>
       ) : null}
       {promoted ? <span className="pill" style={{ color: 'var(--green)' }}>promoted ✓</span> : null}
 

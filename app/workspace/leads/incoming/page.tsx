@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { labelize, formatDT } from '@/lib/format';
-import { bulkRejectIncoming } from '@/lib/actions';
+import { bulkRejectIncoming, bulkDeleteIncoming } from '@/lib/actions';
 import IncomingActions from './IncomingActions';
 import CsvImport from './CsvImport';
 import DataTable, { type DtRow } from '@/components/DataTable';
@@ -146,7 +146,10 @@ export default async function IncomingLeadsPage({ searchParams }: { searchParams
           { label: 'Actions' },
         ]}
         rows={rows}
-        bulk={[{ label: 'Reject selected', action: bulkRejectIncoming, confirm: 'Mark all selected incoming leads as rejected? (promoted ones are skipped)', danger: true }]}
+        bulk={[
+          { label: 'Delete selected', action: bulkDeleteIncoming, confirm: 'Permanently delete all selected incoming leads? (promoted ones are kept)', danger: true },
+          { label: 'Reject selected', action: bulkRejectIncoming, confirm: 'Mark all selected incoming leads as rejected? (promoted ones are skipped)', danger: true },
+        ]}
         empty="No incoming leads match — ingest via n8n webhook or CSV import."
       />
 
