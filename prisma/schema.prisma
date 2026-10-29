@@ -206,6 +206,7 @@ model Lead {
   owner         User?      @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   projects      Project[]
   fromIncoming  IncomingLead[] @relation("IncomingFinal")
+  files         FileAsset[]    @relation("LeadFile")
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
@@ -266,6 +267,7 @@ model Task {
   comments TaskComment[] @relation("TaskComments")
   handovers    HandoverRequest[]
   deliverables Deliverable[] @relation("TaskDeliverables")
+  files        FileAsset[]   @relation("TaskFile")
 
   @@index([status])
   @@index([dueDate])
@@ -620,9 +622,17 @@ model FileAsset {
   storage      String               @default("local")
   projectId    String?
   project      Project?             @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  taskId       String?
+  task         Task?                @relation("TaskFile", fields: [taskId], references: [id], onDelete: SetNull)
+  leadId       String?
+  lead         Lead?                @relation("LeadFile", fields: [leadId], references: [id], onDelete: SetNull)
   uploadedById String?
   uploadedBy   User?                @relation("FileUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
   versions     DeliverableVersion[] @relation("VersionFile")
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
+
+  @@index([projectId])
+  @@index([taskId])
+  @@index([leadId])
 }
