@@ -16,6 +16,9 @@ import { db } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import {
   leadSchema,
+  githubConnectSchema,
+  deployConfigSchema,
+  templateImportSchema,
   leadStatusSchema,
   projectSchema,
   projectStatusSchema,
@@ -26,6 +29,22 @@ import {
   settingsSchema,
   passwordResetSchema,
   templateUseSchema,
+  notificationReadSchema,
+  handoverRequestSchema,
+  handoverDecisionSchema,
+  taskEligibilitySchema,
+  taskCommentSchema,
+  deliverableSchema,
+  deliverableReviewSchema,
+  researchUpdateSchema,
+  verifyActionSchema,
+  promoteLeadSchema,
+  automationSchema,
+  phaseSchema,
+  phaseSubmitSchema,
+  phaseReviewSchema,
+  finalDeliverySchema,
+  acceptDeliverySchema,
 } from '@/lib/validators';
 
 export type ActionResult = { ok: boolean; error?: string; message?: string };
@@ -266,16 +285,21 @@ export async function createTask(raw: unknown): Promise<ActionResult> {
     const t = await db.task.create({
       data: {
         title: input.title,
+        description: input.description,
         projectId: input.projectId ?? null,
         assigneeId: input.assigneeId ?? null,
+        originalOwnerId: input.assigneeId ?? null,
+        createdById: u.id,
         priority: input.priority as TaskPriority,
         status: input.status as TaskStatus,
+        startDate: input.startDate,
         dueDate: input.dueDate,
       },
     });
     await logActivity(u.id, 'Task created', t.title);
     revalidatePath('/workspace');
     revalidatePath('/workspace/tasks');
+    revalidatePath('/workspace/tasks/team');
     return okRes('Task added.');
   } catch (e) {
     return fail(e);
@@ -287,19 +311,30 @@ export async function updateTask(raw: unknown): Promise<ActionResult> {
     const u = await requireUser();
     const input = taskSchema.parse(raw);
     const id = (raw as { id?: string }).id ?? '';
+    const before = await db.task.findUnique({ where: { id }, select: { title: true, assigneeId: true, originalOwnerId: true } });
     const t = await db.task.update({
       where: { id },
       data: {
         title: input.title,
+        description: input.description,
         projectId: input.projectId ?? null,
         assigneeId: input.assigneeId ?? null,
+        originalOwnerId: before?.originalOwnerId ?? input.assigneeId ?? null,
         priority: input.priority as TaskPriority,
         status: input.status as TaskStatus,
+        startDate: input.startDate,
         dueDate: input.dueDate,
+        completedAt: input.status === 'DONE' ? new Date() : null,
       },
     });
+    if (before && before.assigneeId !== t.assigneeId && t.assigneeId) {
+      await notify(t.assigneeId, 'TASK_REASSIGNED', `A task is now yours: "${t.title}"`, undefined, '/workspace/tasks');
+      const pending = await db.handoverRequest.updateMany({ where: { taskId: id, status: 'PENDING' }, data: { status: 'REJECTED', decidedById: u.id, decidedAt: new Date() } });
+      if (pending.count > 0) await notify(t.assigneeId!, 'HANDOVER_CANCELLED', `Pending handover requests on "${t.title}" were closed automatically`, 'Task was reassigned during the update.', '/workspace/tasks');
+    }
     await logActivity(u.id, 'Task updated', t.title);
     revalidatePath('/workspace/tasks');
+    revalidatePath('/workspace/tasks/team');
     revalidatePath('/workspace');
     return okRes('Task updated.');
   } catch (e) {
@@ -560,6 +595,950 @@ export async function useTemplate(raw: unknown): Promise<ActionResult> {
     revalidatePath('/workspace/projects');
     revalidatePath('/workspace/tasks');
     return okRes('Project + starter tasks created.');
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+
+/* ================= PHASE 1 � NOTIFICATIONS + HANDOVERS ================= */
+
+export async function notify(userId: string, type: string, title: string, body?: string, link?: string) {
+  await db.notification.create({ data: { userId, type, title, body: body ?? null, link: link ?? null } });
+}
+
+const taskCardSelect = {
+  id: true,
+  title: true,
+  description: true,
+  priority: true,
+  status: true,
+  startDate: true,
+  dueDate: true,
+  completedAt: true,
+  eligibleForHandover: true,
+  projectId: true,
+  project: { select: { name: true } },
+  assigneeId: true,
+  assignee: { select: { name: true } },
+  originalOwnerId: true,
+  originalOwner: { select: { name: true } },
+  createdById: true,
+  createdBy: { select: { name: true } },
+} as const;
+
+export async function markNotificationsRead(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = notificationReadSchema.parse(raw);
+    const where = input.all
+      ? { userId: u.id, readAt: null }
+      : { userId: u.id, id: input.id, readAt: null };
+    await db.notification.updateMany({ where, data: { readAt: new Date() } });
+    revalidatePath('/workspace');
+    revalidatePath('/workspace/notifications');
+    return okRes(input.all ? 'All notifications marked read.' : 'Marked as read.');
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function toggleTaskEligibility(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = taskEligibilitySchema.parse(raw);
+    const task = await db.task.findUnique({ where: { id: input.taskId }, select: taskCardSelect });
+    if (!task) return { ok: false, error: 'Task not found.' };
+    if (u.id !== task.assigneeId && u.id !== task.createdById && u.role !== 'ADMIN') {
+      return { ok: false, error: 'Only the assignee or an admin can change handover eligibility.' };
+    }
+    await db.task.update({ where: { id: task.id }, data: { eligibleForHandover: input.eligible } });
+    await logActivity(u.id, input.eligible ? 'Task offered for assistance' : 'Handover offer removed', task.title);
+    revalidatePath('/workspace/tasks');
+    revalidatePath('/workspace/tasks/team');
+    return okRes(input.eligible ? 'Task is now visible in Team Tasks.' : 'Task hidden from Team Tasks.');
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function completeTask(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = z.object({ taskId: z.string().min(1) }).parse(raw);
+    const task = await db.task.findUnique({ where: { id: input.taskId }, select: taskCardSelect });
+    if (!task) return { ok: false, error: 'Task not found.' };
+    if (u.id !== task.assigneeId && u.id !== task.createdById && u.role !== 'ADMIN') {
+      return { ok: false, error: 'Not authorized to complete this task.' };
+    }
+    await db.task.update({
+      where: { id: task.id },
+      data: { status: 'DONE', completedAt: new Date() },
+    });
+    // Resolve any pending handover requests safely.
+    const pending = await db.handoverRequest.updateMany({
+      where: { taskId: task.id, status: 'PENDING' },
+      data: { status: 'REJECTED', decidedById: u.id, decidedAt: new Date() },
+    });
+    if (pending.count > 0 && task.assigneeId) {
+      await notify(task.assigneeId, 'HANDOVER_REJECTED', `Pending handover requests on "${task.title}" were closed`, 'The task was completed.', '/workspace/tasks');
+    }
+    await logActivity(u.id, 'Task completed', task.title);
+    revalidatePath('/workspace/tasks');
+    revalidatePath('/workspace/tasks/team');
+    return okRes('Task completed.');
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function addTaskComment(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = taskCommentSchema.parse(raw);
+    const task = await db.task.findUnique({ where: { id: input.taskId }, select: { id: true, title: true, assigneeId: true, createdById: true, originalOwnerId: true } });
+    if (!task) return { ok: false, error: 'Task not found.' };
+    if (task.assigneeId !== u.id && task.createdById !== u.id && task.originalOwnerId !== u.id && u.role !== 'ADMIN') {
+      return { ok: false, error: 'Only people involved in this task can comment.' };
+    }
+    await db.taskComment.create({ data: { taskId: task.id, userId: u.id, body: input.body } });
+    const watchers = [task.createdById, task.originalOwnerId].filter((id): id is string => id !== null && id !== u.id);
+    for (const w of watchers) await notify(w, 'TASK_COMMENT', `New comment on "${task.title}"`, input.body.slice(0, 120), '/workspace/tasks');
+    revalidatePath('/workspace/tasks');
+    return okRes('Comment added.');
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function requestHandover(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = handoverRequestSchema.parse(raw);
+    const result = await db.$transaction(async (tx) => {
+      const task = await tx.task.findUnique({
+        where: { id: input.taskId },
+        select: { id: true, title: true, assigneeId: true, status: true, eligibleForHandover: true },
+      });
+      if (!task) return null;
+      if (!task.assigneeId) return null;
+      if (task.status === 'DONE') return null;
+      if (!task.eligibleForHandover && u.role !== 'ADMIN') return null;
+      if (task.assigneeId === u.id) return null;
+      const dup = await tx.handoverRequest.findFirst({
+        where: { taskId: task.id, requesterId: u.id, status: 'PENDING' },
+      });
+      if (dup) return dup;
+      const other = await tx.handoverRequest.findFirst({ where: { taskId: task.id, status: 'PENDING' } });
+      // Another pending request from a different member does not block visibility � multiple members
+      // may ask the same owner; owner decides. This only prevents duplicates per requester.
+      const created = dup ?? (await tx.handoverRequest.create({
+        data: {
+          taskId: task.id,
+          requesterId: u.id,
+          ownerId: task.assigneeId,
+          note: input.note ?? null,
+        },
+      }));
+      await tx.notification.create({
+        data: {
+          userId: task.assigneeId,
+          type: 'HANDOVER_REQUEST',
+          title: `${u.name} requested to take over "${task.title}"`,
+          body: input.note ?? null,
+          link: '/workspace/tasks/team',
+        },
+      });
+      await tx.activity.create({ data: { message: 'Handover requested', detail: `${task.title} ? ${u.name}`, userId: u.id } });
+      return created;
+    });
+    if (!result) return { ok: false, error: 'Task is not available for handover.' };
+    revalidatePath('/workspace/tasks/team');
+    revalidatePath('/workspace/tasks');
+    return okRes('Handover request sent to the current owner.');
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function decideHandover(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = handoverDecisionSchema.parse(raw);
+    const decision = input.decision === 'approv' ? 'APPROVED' : 'REJECTED';
+    const result = await db.$transaction(async (tx) => {
+      const req = await tx.handoverRequest.findUnique({
+        where: { id: input.requestId },
+        include: { task: { select: taskCardSelect } },
+      });
+      if (!req) return { kind: 'missing' as const };
+      if (req.status !== 'PENDING') return { kind: 'resolved' as const, message: 'Request already decided.' };
+      // Authorization: owner of the task, or an admin. Requester can cancel their own pending request.
+      const isOwner = req.ownerId === u.id;
+      const isRequester = req.requesterId === u.id && input.decision === 'reject'; // requester action = cancel
+      if (!isOwner && !isRequester && u.role !== 'ADMIN') {
+        return { kind: 'forbidden' as const };
+      }
+      if (isRequester && !isOwner && u.role !== 'ADMIN') {
+        const cancelled = await tx.handoverRequest.update({
+          where: { id: req.id },
+          data: { status: 'CANCELLED', decidedById: u.id, decidedAt: new Date() },
+        });
+        await tx.notification.create({
+          data: { userId: req.ownerId, type: 'HANDOVER_CANCELLED', title: `${u.name} withdrew their handover request on "${req.task.title}"`, link: '/workspace/tasks' },
+        });
+        return { kind: 'done' as const, cancelled, message: 'Request cancelled.' };
+      }
+      if (decision === 'APPROVED') {
+        const current = await tx.task.findUnique({ where: { id: req.taskId }, select: { assigneeId: true, status: true, title: true } });
+        if (!current) return { kind: 'missing' as const };
+        if (current.assigneeId !== req.ownerId) {
+          await tx.handoverRequest.update({ where: { id: req.id }, data: { status: 'REJECTED', decidedById: u.id, decidedAt: new Date() } });
+          return { kind: 'stale' as const, message: 'Task was reassigned since the request; request closed as rejected.' };
+        }
+        if (current.status === 'DONE') {
+          await tx.handoverRequest.update({ where: { id: req.id }, data: { status: 'REJECTED', decidedById: u.id, decidedAt: new Date() } });
+          return { kind: 'stale' as const, message: 'Task was completed since the request; request closed as rejected.' };
+        }
+        await tx.task.update({
+          where: { id: req.taskId },
+          data: {
+            assigneeId: req.requesterId,
+            originalOwnerId: current.assigneeId,
+            eligibleForHandover: false,
+          },
+        });
+        const approved = await tx.handoverRequest.update({
+          where: { id: req.id },
+          data: { status: 'APPROVED', decidedById: u.id, decidedAt: new Date() },
+        });
+        // Keep history: requester gets confirmation, former owner gets notification.
+        await tx.notification.create({
+          data: { userId: req.ownerId, type: 'HANDOVER_APPROVED', title: `Handover approved: "${current.title}" now assigned to ${req.requesterId === u.id ? 'you' : req.requesterId}`, link: '/workspace/tasks/team' },
+        });
+        await tx.notification.create({
+          data: { userId: req.requesterId, type: 'HANDOVER_APPROVED', title: `"${current.title}" is now yours`, body: 'You took over this task. Its original owner remains recorded.', link: '/workspace/tasks' },
+        });
+        await tx.activity.create({
+          data: { message: 'Handover approved', detail: `${current.title}: ${req.ownerId} ? ${req.requesterId}`, userId: u.id },
+        });
+        return { kind: 'done' as const, approved, message: 'Handover approved. Task reassigned.' };
+      }
+      // REJECTED by owner/admin
+      await tx.handoverRequest.update({ where: { id: req.id }, data: { status: 'REJECTED', decidedById: u.id, decidedAt: new Date() } });
+      await tx.notification.create({
+        data: { userId: req.requesterId, type: 'HANDOVER_REJECTED', title: `Your handover request on "${req.task.title}" was declined`, link: '/workspace/tasks/team' },
+      });
+      await tx.activity.create({ data: { message: 'Handover declined', detail: req.task.title, userId: u.id } });
+      return { kind: 'done' as const, message: 'Request declined.' };
+    });
+    if (!result || result.kind === 'missing') return { ok: false, error: 'Request not found.' };
+    if (result.kind === 'forbidden') return { ok: false, error: 'Only the current owner (or an admin) can decide this request.' };
+    if (result.kind === 'resolved' || result.kind === 'stale') {
+      return { ok: true, message: result.message };
+    }
+    revalidatePath('/workspace/tasks/team');
+    revalidatePath('/workspace/tasks');
+    revalidatePath('/workspace/notifications');
+    return okRes('message' in result && typeof result.message === 'string' ? result.message : 'Done.');
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/* ================= PHASE 2 � DELIVERABLES ================= */
+
+export async function submitDeliverable(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = deliverableSchema.parse(raw);
+    const task = await db.task.findUnique({
+      where: { id: input.taskId },
+      select: { id: true, title: true, assigneeId: true, createdById: true, projectId: true },
+    });
+    if (!task) return { ok: false, error: 'Task not found.' };
+    if (u.id !== task.assigneeId && u.id !== task.createdById && u.role !== 'ADMIN') {
+      return { ok: false, error: 'Only the assignee (or creator) can submit work for this task.' };
+    }
+    const deliverable = await db.deliverable.create({
+      data: {
+        title: input.title,
+        taskId: task.id,
+        projectId: task.projectId,
+        status: 'UNDER_REVIEW',
+        createdById: u.id,
+        versions: {
+          create: {
+            version: 1,
+            body: input.body,
+            externalUrl: input.externalUrl ?? null,
+            fileId: input.fileId ?? null,
+            status: 'UNDER_REVIEW',
+            submittedById: u.id,
+          },
+        },
+      },
+    });
+    if (task.createdById && task.createdById !== u.id) {
+      await notify(task.createdById, 'DELIVERABLE_SUBMITTED', `Deliverable submitted for "${task.title}"`, input.title, '/workspace/deliverables');
+    } else if (task.projectId) {
+      const admin = await db.user.findFirst({ where: { role: 'ADMIN', isActive: true } });
+      if (admin) await notify(admin.id, 'DELIVERABLE_SUBMITTED', `Deliverable submitted for "${task.title}"`, input.title, '/workspace/deliverables');
+    }
+    await logActivity(u.id, 'Deliverable submitted', `${input.title} (${task.title})`);
+    revalidatePath('/workspace/deliverables');
+    revalidatePath('/workspace/tasks');
+    return okRes('Deliverable submitted for review.');
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function submitNewVersion(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = deliverableSchema.partial({ externalUrl: true, fileId: true }).parse(raw);
+    const old = await db.deliverable.findUnique({
+      where: { id: input.taskId },
+      include: { versions: { orderBy: { version: 'desc' }, take: 1 } },
+    });
+    if (!old) {
+      return submitDeliverable(raw);
+    }
+    if (old.createdById !== u.id && u.role !== 'ADMIN') {
+      return { ok: false, error: 'Only the submitter (or an admin) can add versions.' };
+    }
+    const nextVersion = (old.versions[0]?.version ?? 0) + 1;
+    await db.deliverable.update({
+      where: { id: old.id },
+      data: {
+        status: 'UNDER_REVIEW',
+        currentVersion: nextVersion,
+        versions: {
+          create: {
+            version: nextVersion,
+            body: input.body,
+            externalUrl: input.externalUrl ?? null,
+            fileId: input.fileId ?? null,
+            status: 'UNDER_REVIEW',
+            submittedById: u.id,
+          },
+        },
+      },
+    });
+    await logActivity(u.id, 'Deliverable version submitted', `${old.title} v${nextVersion}`);
+    revalidatePath('/workspace/deliverables');
+    return okRes(`Version ${nextVersion} submitted.`);
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function reviewDeliverable(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = deliverableReviewSchema.parse(raw);
+    const version = await db.deliverableVersion.findUnique({
+      where: { id: input.versionId },
+      include: { deliverable: { select: { id: true, title: true, createdById: true, taskId: true } } },
+    });
+    if (!version) return { ok: false, error: 'Version not found.' };
+    if (version.submittedById === u.id && u.role !== 'ADMIN') {
+      return { ok: false, error: 'You cannot review your own submission.' };
+    }
+    await db.$transaction(async (tx) => {
+      await tx.deliverableVersion.update({ where: { id: version.id }, data: { status: input.decision } });
+      await tx.deliverable.update({ where: { id: version.deliverableId }, data: { status: input.decision, currentVersion: version.version } });
+      await tx.deliverableReview.create({
+        data: { versionId: version.id, decision: input.decision, comment: input.comment, reviewerId: u.id },
+      });
+    });
+    await logActivity(u.id, `Deliverable ${input.decision.toLowerCase().replace('_', ' ')}`, `${version.deliverable.title} v${version.version}`);
+    if (version.deliverable.createdById && version.deliverable.createdById !== u.id) {
+      await notify(
+        version.deliverable.createdById,
+        input.decision === 'APPROVED' ? 'DELIVERABLE_APPROVED' : 'DELIVERABLE_CHANGES',
+        `Review result: ${input.decision.replace('_', ' ').toLowerCase()} � ${version.deliverable.title}`,
+        input.comment,
+        '/workspace/deliverables'
+      );
+    }
+    revalidatePath('/workspace/deliverables');
+    return okRes('Review recorded.');
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/* ================= PHASE 3 � INCOMING LEADS PIPELINE ================= */
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+export function domainOf(value: string | null | undefined): string | null {
+  if (!value) return null;
+  let v = value.trim().toLowerCase();
+  if (v.includes('@')) v = v.split('@')[1];
+  v = v.replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/:\d+$/, '');
+  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(v)) return null;
+  return v;
+}
+
+export async function runVerification(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = verifyActionSchema.parse(raw);
+    const lead = await db.incomingLead.findUnique({ where: { id: input.leadId } });
+    if (!lead) return { ok: false, error: 'Lead not found.' };
+
+    let result: 'SYNTAX_VALIDATED' | 'DOMAIN_CHECKED' | 'WEBSITE_REACHABLE' | 'CONTACT_VERIFIED' | 'INVALID' | 'VERIFICATION_FAILED' | 'MANUALLY_REVIEWED' = 'MANUALLY_REVIEWED';
+    let detail: string | null = null;
+    let method = input.method;
+
+    if (input.method === 'EMAIL_SYNTAX') {
+      method = 'EMAIL_SYNTAX';
+      if (!lead.email) return { ok: false, error: 'No email on this lead.' };
+      const valid = EMAIL_RE.test(lead.email);
+      result = valid ? 'SYNTAX_VALIDATED' : 'INVALID';
+      detail = valid ? 'Syntax OK (does not prove the mailbox exists)' : 'Invalid email syntax';
+    } else if (input.method === 'DOMAIN_DNS') {
+      method = 'DOMAIN_DNS';
+      const domain = domainOf(lead.website) ?? domainOf(lead.email) ?? lead.domain;
+      if (!domain) return { ok: false, error: 'No website, email or domain to check.' };
+      const ok = await dnsLookup(domain);
+      result = ok ? 'DOMAIN_CHECKED' : 'VERIFICATION_FAILED';
+      detail = ok ? `DNS resolved for ${domain} (domain exists; not proof of validity)` : `DNS lookup failed for ${domain}`;
+    } else if (input.method === 'WEBSITE_FETCH') {
+      method = 'WEBSITE_FETCH';
+      const url = lead.website?.startsWith('http') ? lead.website : lead.website ? `https://${lead.website}` : null;
+      if (!url) return { ok: false, error: 'No website URL on this lead.' };
+      try {
+        const ac = new AbortController();
+        const timer = setTimeout(() => ac.abort(), 8000);
+        const res = await fetch(url, { signal: ac.signal, method: 'GET', headers: { 'user-agent': 'CorbleBot/1.0 (lead-verification)' }, redirect: 'follow' });
+        clearTimeout(timer);
+        result = res.ok ? 'WEBSITE_REACHABLE' : 'VERIFICATION_FAILED';
+        detail = `${res.ok ? 'Reached' : `HTTP ${res.status}`} ${new URL(res.url).host} � reachability is not proof of relevance`;
+      } catch {
+        result = 'VERIFICATION_FAILED';
+        detail = `Request to ${url} failed or timed out (8s)`;
+      }
+    } else {
+      method = 'MANUAL_REVIEW';
+      result = 'MANUALLY_REVIEWED';
+      detail = `Manually reviewed by ${u.name}`;
+    }
+
+    // Manual review of a healthy record is the strongest actual check.
+    const newStatus =
+      input.method === 'MANUAL_REVIEW'
+        ? 'MANUALLY_REVIEWED'
+        : lead.verification === 'MANUALLY_REVIEWED'
+          ? lead.verification
+          : result;
+
+    await db.$transaction(async (tx) => {
+      await tx.leadVerificationCheck.create({
+        data: { leadId: lead.id, method, result, detail, checkedById: u.id },
+      });
+      await tx.incomingLead.update({ where: { id: lead.id }, data: { verification: newStatus } });
+      await tx.activity.create({ data: { message: 'Lead verification run', detail: `${lead.company}: ${method} ? ${result}`, userId: u.id } });
+    });
+    revalidatePath('/workspace/leads/incoming');
+    return okRes(`Check recorded: ${result.replace(/_/g, ' ').toLowerCase()}. ${detail ?? ''}`.trim());
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+async function dnsLookup(domain: string): Promise<boolean> {
+  const dns = await import('dns');
+  return new Promise((resolve) => {
+    dns.promises
+      .resolveCname(domain)
+      .then(() => resolve(true))
+      .catch(() =>
+        dns.promises
+          .resolve(domain)
+          .then(() => resolve(true))
+          .catch(() => resolve(false))
+      );
+  });
+}
+
+export async function addResearch(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = researchUpdateSchema.parse(raw);
+    const lead = await db.incomingLead.findUnique({ where: { id: input.leadId }, select: { id: true, company: true, enrichment: true, processingStatus: true, researchNotes: true } });
+    if (!lead) return { ok: false, error: 'Lead not found.' };
+    if (lead.processingStatus === 'REJECTED') return { ok: false, error: 'Lead was rejected � restore it first.' };
+    await db.$transaction(async (tx) => {
+      await tx.leadResearchUpdate.create({ data: { leadId: lead.id, authorId: u.id, body: input.body, sourceUrl: input.sourceUrl ?? null } });
+      const existing = (lead.enrichment as { research?: string[] } | null)?.research ?? [];
+      await tx.incomingLead.update({
+        where: { id: lead.id },
+        data: {
+          enrichment: { ...(lead.enrichment as object | null), research: [...existing, { by: u.name, at: new Date().toISOString(), note: input.body, url: input.sourceUrl ?? null }] },
+          processingStatus: lead.processingStatus === 'NEW' ? 'UNDER_REVIEW' : undefined,
+          researchNotes: [...(lead.researchNotes ?? ''), `[${new Date().toISOString()}] ${u.name}: ${input.body}`].filter(Boolean).join('\n'),
+        },
+      });
+      await tx.activity.create({ data: { message: 'Lead research added', detail: lead.company, userId: u.id } });
+    });
+    revalidatePath('/workspace/leads/incoming');
+    return okRes('Research note recorded.');
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function rejectIncoming(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = z.object({ incomingId: z.string().min(1), restore: z.boolean().optional() }).parse(raw);
+    const lead = await db.incomingLead.findUnique({ where: { id: input.incomingId }, select: { id: true, company: true, processingStatus: true } });
+    if (!lead) return { ok: false, error: 'Lead not found.' };
+    if (lead.processingStatus === 'PROMOTED') return { ok: false, error: 'Already promoted � cannot reject.' };
+    await db.incomingLead.update({
+      where: { id: lead.id },
+      data: { processingStatus: input.restore ? 'UNDER_REVIEW' : 'REJECTED', reviewedById: u.id },
+    });
+    await logActivity(u.id, input.restore ? 'Lead restored for review' : 'Lead rejected', lead.company);
+    revalidatePath('/workspace/leads/incoming');
+    return okRes(input.restore ? 'Lead restored.' : 'Lead marked rejected.');
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function promoteToFinal(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = promoteLeadSchema.parse(raw);
+    const out = await db.$transaction(async (tx) => {
+      const lead = await tx.incomingLead.findUnique({ where: { id: input.incomingId } });
+      if (!lead) return { code: 'missing' as const };
+      if (lead.processingStatus === 'PROMOTED' && lead.finalLeadId) {
+        return { code: 'already' as const, id: lead.finalLeadId, existing: true };
+      }
+      if (lead.processingStatus === 'REJECTED') return { code: 'rejected' as const };
+      // Validation: needs at least a company (already) and one contact channel.
+      if (!lead.email && !lead.phone && !lead.website) return { code: 'nocontact' as const };
+
+      // Duplicate detection against FINAL records.
+      const domain = domainOf(lead.website) ?? domainOf(lead.email) ?? lead.domain;
+      const clash = await tx.lead.findFirst({
+        where: {
+          OR: [
+            ...(lead.email ? [{ email: lead.email }] : []),
+            ...(domain ? [{ name: { equals: lead.company, mode: 'insensitive' as const } }] : []),
+          ],
+        },
+      });
+      if (clash) return { code: 'dupfinal' as const, id: clash.id, name: clash.name };
+
+      // Duplicate within INCOMING pool (same email from a different source).
+      if (lead.email) {
+        const other = await tx.incomingLead.findFirst({
+          where: { id: { not: lead.id }, email: lead.email, processingStatus: 'PROMOTED' },
+          select: { id: true, finalLeadId: true },
+        });
+        if (other?.finalLeadId) return { code: 'dupfinal' as const, id: other.finalLeadId, name: lead.company };
+      }
+
+      const final = await tx.lead.create({
+        data: {
+          name: input.overrideCompany?.trim() || lead.company,
+          contactPerson: lead.contactPerson,
+          email: lead.email,
+          notes: `Promoted from Incoming Lead ${lead.id} (source: ${lead.source}${lead.sourceUrl ? `, ${lead.sourceUrl}` : ''}). ${lead.researchNotes ? 'Research: ' + lead.researchNotes : ''}`.slice(0, 1900),
+          service: lead.industry ?? 'General enquiry',
+          source: `Incoming � ${lead.source}`,
+          status: 'NEW',
+          estValue: input.estValue,
+          ownerId: u.id,
+        },
+      });
+      await tx.incomingLead.update({
+        where: { id: lead.id },
+        data: { processingStatus: 'PROMOTED', finalLeadId: final.id, reviewedById: u.id },
+      });
+      await tx.activity.create({ data: { message: 'Lead promoted to Final', detail: `${lead.company} ? ${final.name}`, userId: u.id } });
+      return { code: 'ok' as const, id: final.id, name: final.name };
+    });
+    if (!out || out.code === 'missing') return { ok: false, error: 'Incoming lead not found.' };
+    if (out.code === 'rejected') return { ok: false, error: 'Lead was rejected. Restore it first.' };
+    if (out.code === 'nocontact') return { ok: false, error: 'Lead has no email, phone or website � verify or research it first.' };
+    if (out.code === 'dupfinal') {
+      return { ok: false, error: `A final lead already matches this record (see "${'name' in out && out.name ? out.name : 'existing'}"). Review before promoting.`, message: 'conflict' };
+    }
+    if (out.code === 'already') {
+      return { ok: true, message: `Already promoted earlier � final lead ${out.id}.` };
+    }
+    revalidatePath('/workspace/leads/incoming');
+    revalidatePath('/workspace/leads');
+    return okRes(`Promoted! Final lead created (${out.id}).`);
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/* ================= PHASE 5 � AUTOMATION PROJECTS ================= */
+
+export async function createAutomation(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = automationSchema.parse(raw);
+    const p = await db.automationProject.create({
+      data: {
+        name: input.name,
+        description: input.description,
+        ownerId: u.id,
+        maintainerId: input.maintainerId ?? null,
+        githubRepo: input.githubRepo ?? null,
+        websiteProjectId: input.websiteProjectId ?? null,
+      },
+    });
+    await logActivity(u.id, 'Automation project created', p.name);
+    revalidatePath('/workspace/automation');
+    return okRes('Automation project created.');
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+function nextStatusFor(current: string, decision: string): 'NOT_STARTED' | 'IN_PROGRESS' | 'SUBMITTED_FOR_REVIEW' | 'CHANGES_REQUESTED' | 'APPROVED' | 'BLOCKED' {
+  if (decision === 'APPROVED') return 'APPROVED';
+  if (decision === 'CHANGES_REQUESTED') return 'CHANGES_REQUESTED';
+  return 'SUBMITTED_FOR_REVIEW';
+}
+
+function progressOf(phases: { status: string }[]): number {
+  if (phases.length === 0) return 0;
+  const approved = phases.filter((p) => p.status === 'APPROVED').length;
+  const reviewing = phases.filter((p) => p.status === 'SUBMITTED_FOR_REVIEW' || p.status === 'CHANGES_REQUESTED').length;
+  return Math.round(((approved + reviewing * 0.5) / phases.length) * 100);
+}
+
+export async function addPhase(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = phaseSchema.parse(raw);
+    const project = await db.automationProject.findUnique({ where: { id: input.projectId }, select: { id: true, ownerId: true } });
+    if (!project) return { ok: false, error: 'Automation project not found.' };
+    if (u.id !== project.ownerId && u.role !== 'ADMIN') return { ok: false, error: 'Only the project owner (or an admin) can define phases.' };
+    if (input.dependsOnId) {
+      const dep = await db.automationPhase.findFirst({ where: { id: input.dependsOnId, projectId: input.projectId } });
+      if (!dep) return { ok: false, error: 'Dependency must be a phase of the same project.' };
+    }
+    const count = await db.automationPhase.count({ where: { projectId: input.projectId } });
+    const phase = await db.automationPhase.create({
+      data: {
+        projectId: input.projectId,
+        title: input.title,
+        description: input.description,
+        order: count + 1,
+        ownerId: input.ownerId ?? u.id,
+        dueDate: input.dueDate ?? null,
+        dependsOnId: input.dependsOnId ?? null,
+      },
+    });
+    await logActivity(u.id, 'Automation phase added', `${input.title} (#${phase.order})`);
+    revalidatePath(`/workspace/automation/${input.projectId}`);
+    return okRes('Phase added.');
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function submitPhase(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = phaseSubmitSchema.parse(raw);
+    const phase = await db.automationPhase.findUnique({
+      where: { id: input.phaseId },
+      include: { project: { select: { ownerId: true, status: true } }, dependsOn: { select: { status: true, title: true } } },
+    });
+    if (!phase) return { ok: false, error: 'Phase not found.' };
+    if (u.id !== phase.ownerId && u.id !== phase.project.ownerId && u.role !== 'ADMIN') {
+      return { ok: false, error: 'Only the phase owner (or project owner) can submit.' };
+    }
+    if (phase.dependsOn && phase.dependsOn.status !== 'APPROVED') {
+      return { ok: false, error: `Phase "${phase.dependsOn.title}" must be approved first � its prerequisite is not satisfied.` };
+    }
+    if (phase.status === 'APPROVED') return { ok: false, error: 'Phase is already approved. Add a new phase instead.' };
+    const lastVersion = await db.phaseSubmission.findFirst({ where: { phaseId: phase.id }, orderBy: { version: 'desc' } });
+    const version = (lastVersion?.version ?? 0) + 1;
+    const reviewerAdmin = await db.user.findFirst({ where: { role: 'ADMIN', isActive: true } });
+    await db.$transaction(async (tx) => {
+      await tx.phaseSubmission.create({ data: { phaseId: phase.id, version, notes: input.notes, authorId: u.id } });
+      await tx.automationPhase.update({ where: { id: phase.id }, data: { status: 'SUBMITTED_FOR_REVIEW' } });
+      await tx.automationProject.update({ where: { id: phase.projectId }, data: { status: phase.project.status === 'PLANNING' ? 'IN_PROGRESS' : undefined } });
+    });
+    if (reviewerAdmin) {
+      await notify(reviewerAdmin.id, 'PHASE_SUBMITTED', `Phase "${phase.title}" v${version} submitted for review`, input.notes.slice(0, 160), `/workspace/automation/${phase.projectId}`);
+    }
+    await logActivity(u.id, 'Phase submitted for review', `${phase.title} v${version}`);
+    revalidatePath(`/workspace/automation/${phase.projectId}`);
+    revalidatePath('/workspace');
+    return okRes(`Version ${version} submitted for review.`);
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function reviewPhase(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = phaseReviewSchema.parse(raw);
+    const submission = await db.phaseSubmission.findUnique({
+      where: { id: input.submissionId },
+      include: { phase: { select: { id: true, title: true, projectId: true, order: true } } },
+    });
+    if (!submission) return { ok: false, error: 'Submission not found.' };
+    if (submission.authorId === u.id && u.role !== 'ADMIN') return { ok: false, error: 'You cannot review your own phase submission.' };
+    const approved = input.decision === 'APPROVED';
+    await db.$transaction(async (tx) => {
+      await tx.phaseSubmission.update({
+        where: { id: submission.id },
+        data: { status: approved ? 'approved' : 'changes_requested', reviewerId: u.id, reviewComment: input.comment ?? null, reviewedAt: new Date() },
+      });
+      await tx.automationPhase.update({
+        where: { id: submission.phaseId },
+        data: {
+          status: nextStatusFor(submission.status, input.decision),
+          completedAt: approved ? new Date() : null,
+        },
+      });
+    });
+    if (submission.authorId) {
+      await db.notification.create({ data: { userId: submission.authorId, type: 'PHASE_REVIEWED', title: `Phase "${submission.phase.title}" v${submission.version}: ${approved ? 'approved' : 'changes requested'}`, body: input.comment ?? null, link: `/workspace/automation/${submission.phase.projectId}` } });
+    }
+    await logActivity(u.id, approved ? 'Phase approved' : 'Phase changes requested', `${submission.phase.title} v${submission.version}`);
+    revalidatePath(`/workspace/automation/${submission.phase.projectId}`);
+    return okRes(approved ? 'Phase approved � dependent phases may now proceed.' : 'Changes requested.');
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function assembleDelivery(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = finalDeliverySchema.parse(raw);
+    const project = await db.automationProject.findUnique({
+      where: { id: input.projectId },
+      include: { phases: { select: { title: true, status: true, order: true } } },
+    });
+    if (!project) return { ok: false, error: 'Project not found.' };
+    if (u.id !== project.ownerId && u.role !== 'ADMIN') return { ok: false, error: 'Only the project owner (or an admin) can assemble the final delivery.' };
+    if (project.phases.some((p) => p.status === 'SUBMITTED_FOR_REVIEW' || p.status === 'CHANGES_REQUESTED')) {
+      return { ok: false, error: 'All phases must be resolved (approved or explicitly not required) before delivery.' };
+    }
+    if (project.phases.length > 0 && project.phases.filter((p) => p.status === 'APPROVED').length === 0) {
+      return { ok: false, error: 'No approved phases to deliver.' };
+    }
+    const requiredCount = project.phases.length;
+    const approvedCount = project.phases.filter((p) => p.status === 'APPROVED').length;
+    await db.automationProject.update({
+      where: { id: project.id },
+      data: {
+        finalDelivery: {
+          pending: true,
+          assembledById: u.id,
+          assembledAt: new Date().toISOString(),
+          repoUrl: input.repoUrl ?? null,
+          websiteUrl: input.websiteUrl ?? null,
+          notes: input.notes ?? null,
+          phasesTotal: requiredCount,
+          phasesApproved: approvedCount,
+        },
+      },
+    });
+    if (project.deliveryAcceptedById !== u.id && project.ownerId && project.ownerId !== u.id) {
+      await db.notification.create({ data: { userId: project.ownerId, type: 'DELIVERY_PENDING', title: `Final delivery assembled for "${project.name}" � awaiting acceptance`, link: `/workspace/automation/${project.id}` } });
+    }
+    await logActivity(u.id, 'Final delivery assembled', project.name);
+    revalidatePath(`/workspace/automation/${project.id}`);
+    return okRes('Delivery package assembled. It stays pending until the designated reviewer accepts it.');
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function acceptDelivery(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = acceptDeliverySchema.parse(raw);
+    const project = await db.automationProject.findUnique({ where: { id: input.projectId }, select: { id: true, name: true, finalDelivery: true, ownerId: true, deliveryAcceptedById: true } });
+    if (!project) return { ok: false, error: 'Project not found.' };
+    const pending = (project.finalDelivery as { pending?: boolean } | null)?.pending;
+    if (!pending) return { ok: false, error: 'No pending delivery package.' };
+    if (project.deliveryAcceptedById) return { ok: false, error: 'Delivery already accepted.' };
+    if (project.ownerId === u.id && u.role !== 'ADMIN') return { ok: false, error: 'The designated reviewer must accept the delivery (project owner cannot self-accept unless admin).' };
+    await db.automationProject.update({
+      where: { id: project.id },
+      data: {
+        status: 'DELIVERED',
+        deliveryAcceptedById: u.id,
+        deliveryAcceptedAt: new Date(),
+        finalDelivery: { pending: false, accepted: true, acceptedById: u.id, acceptedAt: new Date().toISOString() },
+      },
+    });
+    await logActivity(u.id, 'Final delivery accepted', project.name);
+    revalidatePath(`/workspace/automation/${project.id}`);
+    revalidatePath('/workspace');
+    return okRes('Delivery accepted and project marked DELIVERED.');
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/* ================= PHASE 7 — GITHUB CONNECTIONS & DEPLOYS ================= */
+
+export async function connectGithub(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = githubConnectSchema.parse(raw);
+    if (u.role !== 'ADMIN') return { ok: false, error: 'Only admins can connect GitHub repos.' };
+    const { repoExists } = await import('@/lib/github');
+    const check = await repoExists(input.owner, input.repo);
+    if (!check.ok) return { ok: false, error: `GitHub says no access to ${input.owner}/${input.repo} (status ${check.status ?? 'unknown'}). Check GITHUB_TOKEN and repo casing.` };
+    const conn = await db.gitHubConnection.upsert({
+      where: { projectId: input.projectId },
+      create: { projectId: input.projectId, owner: input.owner, repo: input.repo, branch: input.branch, repoId: check.id ? String(check.id) : null, connectedById: u.id, status: 'connected' },
+      update: { owner: input.owner, repo: input.repo, branch: input.branch, repoId: check.id ? String(check.id) : null, connectedById: u.id, status: 'connected' },
+    });
+    await logActivity(u.id, 'GitHub repo connected', `${input.owner}/${input.repo} (${conn.branch})`);
+    revalidatePath('/workspace/github');
+    return okRes(`Connected ${input.owner}/${input.repo} @ ${conn.branch}.`);
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function disconnectGithub(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = z.object({ projectId: z.string().min(1) }).parse(raw);
+    if (u.role !== 'ADMIN') return { ok: false, error: 'Only admins can disconnect repos.' };
+    await db.gitHubConnection.deleteMany({ where: { projectId: input.projectId } });
+    await logActivity(u.id, 'GitHub repo disconnected', input.projectId);
+    revalidatePath('/workspace/github');
+    return okRes('Repo disconnected.');
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function configureDeploy(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = deployConfigSchema.parse(raw);
+    if (u.role !== 'ADMIN') return { ok: false, error: 'Only admins can configure Vercel.' };
+    await db.deploymentConnection.upsert({
+      where: { projectId: input.projectId },
+      create: { projectId: input.projectId, vercelProjectId: input.vercelProjectId, vercelTeamId: input.vercelTeamId ?? null },
+      update: { vercelProjectId: input.vercelProjectId, vercelTeamId: input.vercelTeamId ?? null },
+    });
+    await logActivity(u.id, 'Vercel project configured', input.vercelProjectId);
+    revalidatePath('/workspace/vercel');
+    return okRes(`Vercel project ${input.vercelProjectId} connected.`);
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function deployProject(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = z
+      .object({ projectId: z.string().min(1), production: z.boolean().optional().default(false) })
+      .refine((v) => v, { message: 'invalid' })
+      .parse(raw);
+    if (u.role !== 'ADMIN') return { ok: false, error: 'Only admins can trigger deploys.' };
+    const conn = await db.deploymentConnection.findUnique({ where: { projectId: input.projectId }, include: { project: { select: { name: true } } } });
+    if (!conn) return { ok: false, error: 'No Vercel project connected for this site yet.' };
+    if (input.production) {
+      const proceed = (raw as { confirm?: boolean }).confirm;
+      if (!proceed) return { ok: false, error: 'Confirm production deploy first (pass confirm).' };
+    }
+    const { createDeployment, vercelConfigured } = await import('@/lib/vercel');
+    if (!vercelConfigured()) return { ok: false, error: 'VERCEL_TOKEN is not configured in this environment.' };
+    let out: { vercelId: string; url?: string; status: string };
+    try {
+      out = await createDeployment(conn.vercelProjectId, conn.vercelTeamId ?? undefined, input.production ? 'production' : 'preview');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const friendly = msg.startsWith('NOT_CONFIGURED') ? 'VERCEL_TOKEN not configured in this environment.' : msg.startsWith('VERCEL ') ? `Vercel API error — ${msg.slice(0, 240)}` : msg.slice(0, 240);
+      await db.deploymentRecord.create({
+        data: {
+          projectId: conn.projectId,
+          environment: input.production ? 'production' : 'preview',
+          status: 'FAILED',
+          errorSummary: friendly.slice(0, 500),
+        },
+      });
+      return { ok: false, error: friendly };
+    }
+    const record = await db.deploymentRecord.create({
+      data: {
+        projectId: conn.projectId,
+        vercelId: out.vercelId,
+        environment: input.production ? 'production' : 'preview',
+        status: input.production ? 'QUEUED' : 'BUILDING',
+        url: out.url ?? null,
+        previewUrl: out.url ?? null,
+      },
+    });
+    await db.activity.create({ data: { message: `Vercel deploy started (${record.environment})`, detail: `${conn.project.name} → ${out.url ?? out.vercelId}`, userId: u.id } });
+    revalidatePath('/workspace/vercel');
+    return okRes(`Deploy queued: ${out.url ?? out.vercelId}`);
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/* ================= PHASE 8 — TEMPLATE CATEGORIES & IMPORT ================= */
+
+export async function importTemplate(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = templateImportSchema.parse(raw);
+    if (u.role !== 'ADMIN') return { ok: false, error: 'Only admins can import templates.' };
+    let origin = '';
+    let path = '';
+    try {
+      const url = new URL(input.url);
+      if (!/(^|\.)github\.com$/i.test(url.hostname)) return { ok: false, error: 'Only public GitHub repo URLs are supported for template import.' };
+      origin = url.pathname.split('/').filter(Boolean).slice(0, 2).join('/');
+      path = url.pathname.split('/').filter(Boolean)[1] ?? 'repo';
+    } catch {
+      return { ok: false, error: 'Invalid URL.' };
+    }
+    const name = path.replace(/[-_.]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    const existing = await db.template.findFirst({ where: { OR: [{ source: origin }, { name, kind: input.kind }] } });
+    if (existing) {
+      await db.template.update({
+        where: { id: existing.id },
+        data: { kind: input.kind, source: origin, repoUrl: input.url, updatedAt: new Date() },
+      });
+      await logActivity(u.id, `Template refreshed (${input.kind.toLowerCase()})`, existing.name);
+      revalidatePath('/workspace/templates');
+      return okRes(`Template updated: ${existing.name}.`);
+    }
+    const t = await db.template.create({
+      data: {
+        name,
+        description: `Imported from GitHub (${origin}). Fill in steps/env vars after review.`,
+        kind: input.kind,
+        source: origin,
+        repoUrl: input.url,
+      },
+    });
+    await logActivity(u.id, 'Template imported', `${t.name} (${input.kind})`);
+    revalidatePath('/workspace/templates');
+    return okRes(`Template imported: ${t.name} — review its steps, framework and env vars.`);
   } catch (e) {
     return fail(e);
   }

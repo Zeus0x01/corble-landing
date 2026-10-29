@@ -64,83 +64,62 @@ enum Currency {
   USD
 }
 
-model User {
-  id           String    @id @default(cuid())
-  name         String
-  email        String    @unique
-  passwordHash String
-  role         Role      @default(MEMBER)
-  theme        String    @default("dark")
-  isActive     Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-
-  leads      Lead[]            @relation("LeadOwner")
-  projects   Project[]         @relation("ProjectOwner")
-  tasks      Task[]            @relation("TaskAssignee")
-  activities Activity[]
-  files      FileAsset[]       @relation("FileUploader")
+enum HandoverStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
 }
 
-model Lead {
-  id            String     @id @default(cuid())
-  name          String
-  contactPerson String?
-  email         String?
-  notes         String?
-  service       String
-  source        String
-  status        LeadStatus @default(NEW)
-  estValue      Int        @default(0)
-  nextFollowUp  DateTime?
-  ownerId       String?
-  owner         User?      @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  projects      Project[]
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-
-  @@index([status])
-  @@index([nextFollowUp])
+enum DeliverableStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+  REJECTED
 }
 
-model Project {
-  id         String        @id @default(cuid())
-  name       String
-  clientName String
-  leadId     String?
-  lead       Lead?         @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  service    String
-  status     ProjectStatus @default(PLANNING)
-  progress   Int           @default(0)
-  dueDate    DateTime?
-  ownerId    String?
-  owner      User?         @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  budget     Int           @default(0)
-  tasks      Task[]
-  finance    FinanceRecord[]
-  files      FileAsset[]
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
-
-  @@index([status])
-  @@index([dueDate])
+enum IncomingProcessing {
+  NEW
+  UNDER_REVIEW
+  REJECTED
+  PROMOTED
+  DUPLICATE
 }
 
-model Task {
-  id         String       @id @default(cuid())
-  title      String
-  projectId  String?
-  project    Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  assigneeId String?
-  assignee   User?        @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  priority   TaskPriority @default(MEDIUM)
-  status     TaskStatus   @default(TODO)
-  dueDate    DateTime?
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
+enum VerificationStatus {
+  UNVERIFIED
+  SYNTAX_VALIDATED
+  DOMAIN_CHECKED
+  WEBSITE_REACHABLE
+  CONTACT_VERIFIED
+  MANUALLY_REVIEWED
+  INVALID
+  DUPLICATE
+  VERIFICATION_FAILED
+}
 
-  @@index([status])
-  @@index([dueDate])
+enum PhaseStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  SUBMITTED_FOR_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+  BLOCKED
+}
+
+enum DeploymentStatus {
+  NOT_CONFIGURED
+  QUEUED
+  BUILDING
+  LIVE
+  FAILED
+  CANCELLED
+}
+
+enum TemplateKind {
+  AUTOMATION
+  WEBSITE
 }
 
 model FinanceRecord {
@@ -151,7 +130,7 @@ model FinanceRecord {
   status      FinanceStatus
   date        DateTime
   projectId   String?
-  project     Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  project     Project?      @relation("ProjectFinance", fields: [projectId], references: [id], onDelete: SetNull)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -170,13 +149,456 @@ model Activity {
   @@index([createdAt])
 }
 
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         Role      @default(MEMBER)
+  theme        String    @default("dark")
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  leads            Lead[]            @relation("LeadOwner")
+  projects         Project[]         @relation("ProjectOwner")
+  tasks            Task[]            @relation("TaskAssignee")
+  activities       Activity[]
+  files            FileAsset[]       @relation("FileUploader")
+  originalTasks    Task[]            @relation("TaskOriginalOwner")
+  createdTasks     Task[]            @relation("TaskCreator")
+  handoverRequests HandoverRequest[] @relation("HandoverRequester")
+  handoverOwned    HandoverRequest[] @relation("HandoverOwner")
+  handoverDecided  HandoverRequest[] @relation("HandoverDecider")
+  notifications    Notification[]
+
+  deliverableCreated  Deliverable[]           @relation("DeliverableCreator")
+  versionSubmitted    DeliverableVersion[]    @relation("VersionSubmitter")
+  reviewsGiven        DeliverableReview[]     @relation("ReviewReviewer")
+  verificationChecked LeadVerificationCheck[] @relation("VerificationChecker")
+
+  automationOwned      AutomationProject[] @relation("AutomationOwner")
+  automationMaintained AutomationProject[] @relation("AutomationMaintainer")
+  deliveryAccepted     AutomationProject[] @relation("DeliveryAcceptor")
+  phaseOwned           AutomationPhase[]   @relation("PhaseOwner")
+  submissionAuthored   PhaseSubmission[]   @relation("SubmissionAuthor")
+  submissionReviewed   PhaseSubmission[]   @relation("SubmissionReviewer")
+  githubConnected      GitHubConnection[]  @relation("GitHubConnector")
+
+  taskComments     TaskComment[]        @relation("TaskCommentAuthor")
+  incomingReviewed IncomingLead[]       @relation("IncomingReviewer")
+  researchUpdates  LeadResearchUpdate[] @relation("ResearchAuthor")
+  importsBy        LeadImportBatch[]    @relation("ImportBy")
+}
+
+model Lead {
+  id            String     @id @default(cuid())
+  name          String
+  contactPerson String?
+  email         String?
+  notes         String?
+  service       String
+  source        String
+  status        LeadStatus @default(NEW)
+  estValue      Int        @default(0)
+  nextFollowUp  DateTime?
+  ownerId       String?
+  owner         User?      @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  projects      Project[]
+  fromIncoming  IncomingLead[] @relation("IncomingFinal")
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([status])
+  @@index([nextFollowUp])
+}
+
+model Project {
+  id         String          @id @default(cuid())
+  name       String
+  clientName String
+  leadId     String?
+  lead       Lead?           @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  service    String
+  status     ProjectStatus   @default(PLANNING)
+  progress   Int             @default(0)
+  dueDate    DateTime?
+  ownerId    String?
+  owner      User?           @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  budget     Int             @default(0)
+  tasks      Task[]
+  finance FinanceRecord[] @relation("ProjectFinance")
+  files      FileAsset[]
+
+  deliverables Deliverable[] @relation("ProjectDeliverables")
+  automationProjects AutomationProject[]   @relation("AutomationWebsite")
+  githubConnections  GitHubConnection[]
+  deploymentRecords  DeploymentRecord[]    @relation("DeploymentProject")
+  deploymentConn     DeploymentConnection? @relation("DeploymentConnProject")
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  @@index([status])
+  @@index([dueDate])
+}
+
+model Task {
+  id                  String       @id @default(cuid())
+  title               String
+  description         String?
+  projectId           String?
+  project             Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  assigneeId          String?
+  assignee            User?        @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  originalOwnerId     String?
+  originalOwner       User?        @relation("TaskOriginalOwner", fields: [originalOwnerId], references: [id], onDelete: SetNull)
+  createdById         String?
+  createdBy           User?        @relation("TaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  priority            TaskPriority @default(MEDIUM)
+  status              TaskStatus   @default(TODO)
+  startDate           DateTime?
+  dueDate             DateTime?
+  completedAt         DateTime?
+  eligibleForHandover Boolean      @default(false)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  comments TaskComment[] @relation("TaskComments")
+  handovers    HandoverRequest[]
+  deliverables Deliverable[] @relation("TaskDeliverables")
+
+  @@index([status])
+  @@index([dueDate])
+  @@index([assigneeId])
+}
+
+model TaskComment {
+  id        String     @id @default(cuid())
+  taskId    String
+  task      Task       @relation("TaskComments", fields: [taskId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?      @relation("TaskCommentAuthor", fields: [userId], references: [id], onDelete: SetNull)
+  body      String
+  createdAt DateTime   @default(now())
+
+  @@index([taskId])
+}
+
+model HandoverRequest {
+  id          String         @id @default(cuid())
+  taskId      String
+  task        Task           @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  requesterId String
+  requester   User           @relation("HandoverRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  ownerId     String
+  owner       User           @relation("HandoverOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  status      HandoverStatus @default(PENDING)
+  note        String?
+  decidedById String?
+  decidedBy   User?          @relation("HandoverDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime       @default(now())
+  decidedAt   DateTime?
+
+  @@index([taskId])
+  @@index([requesterId])
+  @@index([status])
+}
+
+model Deliverable {
+  id             String            @id @default(cuid())
+  title          String
+  taskId         String?
+  task Task? @relation("TaskDeliverables", fields: [taskId], references: [id], onDelete: Cascade)
+  projectId      String?
+  project        Project?          @relation("ProjectDeliverables", fields: [projectId], references: [id], onDelete: Cascade)
+  phaseId        String?
+  phase          AutomationPhase?  @relation("PhaseDeliverables", fields: [phaseId], references: [id], onDelete: SetNull)
+  currentVersion Int               @default(1)
+  status         DeliverableStatus @default(SUBMITTED)
+  createdById    String?
+  createdBy      User?             @relation("DeliverableCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  versions       DeliverableVersion[]
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([status])
+  @@index([taskId])
+  @@index([projectId])
+}
+
+model DeliverableVersion {
+  id            String              @id @default(cuid())
+  deliverableId String
+  deliverable   Deliverable         @relation(fields: [deliverableId], references: [id], onDelete: Cascade)
+  version       Int
+  body          String
+  externalUrl   String?
+  fileId        String?
+  file          FileAsset?          @relation("VersionFile", fields: [fileId], references: [id], onDelete: SetNull)
+  status        DeliverableStatus   @default(SUBMITTED)
+  submittedById String?
+  submittedBy   User?               @relation("VersionSubmitter", fields: [submittedById], references: [id], onDelete: SetNull)
+  submittedAt   DateTime            @default(now())
+  reviews       DeliverableReview[]
+
+  @@unique([deliverableId, version])
+  @@index([status])
+}
+
+model DeliverableReview {
+  id         String              @id @default(cuid())
+  versionId  String
+  version    DeliverableVersion  @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  decision   String
+  comment    String
+  reviewerId String?
+  reviewer   User?               @relation("ReviewReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  createdAt  DateTime            @default(now())
+
+  @@index([versionId])
+}
+
+model IncomingLead {
+  id               String                 @id @default(cuid())
+  company          String
+  contactPerson    String?
+  email            String?
+  phone            String?
+  website          String?
+  domain           String?
+  industry         String?
+  location         String?
+  source           String
+  sourceUrl        String?
+  externalId       String?
+  workflowId       String?
+  batchId          String?
+  rawPayload       Json
+  parsed           Json?
+  normalized       Json?
+  enrichment       Json?
+  verification     VerificationStatus     @default(UNVERIFIED)
+  researchNotes    String?
+  receivedAt       DateTime               @default(now())
+  reviewedById     String?
+  reviewedBy       User?                  @relation("IncomingReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  processingStatus IncomingProcessing     @default(NEW)
+  finalLeadId      String?
+  finalLead        Lead?                  @relation("IncomingFinal", fields: [finalLeadId], references: [id], onDelete: SetNull)
+  ingestKey        String?                @unique
+  importBatchId    String?
+  importBatch      LeadImportBatch?       @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+
+  researchUpdates    LeadResearchUpdate[]    @relation("LeadResearch")
+  verificationChecks LeadVerificationCheck[] @relation("LeadVerifications")
+
+  @@unique([source, externalId])
+  @@index([processingStatus])
+  @@index([verification])
+  @@index([domain])
+}
+
+model LeadResearchUpdate {
+  id        String            @id @default(cuid())
+  leadId    String
+  lead      IncomingLead      @relation("LeadResearch", fields: [leadId], references: [id], onDelete: Cascade)
+  authorId  String?
+  author    User?             @relation("ResearchAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  body      String
+  sourceUrl String?
+  createdAt DateTime          @default(now())
+
+  @@index([leadId])
+}
+
+model LeadVerificationCheck {
+  id          String             @id @default(cuid())
+  leadId      String
+  lead        IncomingLead       @relation("LeadVerifications", fields: [leadId], references: [id], onDelete: Cascade)
+  method      String
+  result      VerificationStatus
+  detail      String?
+  checkedById String?
+  checkedBy   User?              @relation("VerificationChecker", fields: [checkedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime           @default(now())
+
+  @@index([leadId])
+}
+
+model IngestionRun {
+  id           String    @id @default(cuid())
+  workflowId   String
+  runId        String    @unique
+  batchId      String?
+  status       String    @default("processing")
+  received     Int       @default(0)
+  created      Int       @default(0)
+  duplicates   Int       @default(0)
+  rejected     Int       @default(0)
+  errorSummary String?
+  startedAt    DateTime  @default(now())
+  finishedAt   DateTime?
+
+  @@index([workflowId])
+}
+
+model LeadImportBatch {
+  id            String    @id @default(cuid())
+  filename      String
+  totalRows     Int       @default(0)
+  validRows     Int       @default(0)
+  invalidRows   Int       @default(0)
+  duplicateRows Int       @default(0)
+  importedById  String?
+  importedBy    User?     @relation("ImportBy", fields: [importedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime  @default(now())
+
+  leads IncomingLead[]
+
+  @@index([createdAt])
+}
+
+model AutomationProject {
+  id                   String        @id @default(cuid())
+  name                 String
+  description          String?
+  status               ProjectStatus @default(PLANNING)
+  ownerId              String?
+  owner                User?         @relation("AutomationOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  maintainerId         String?
+  maintainer           User?         @relation("AutomationMaintainer", fields: [maintainerId], references: [id], onDelete: SetNull)
+  githubRepo           String?
+  websiteProjectId     String?
+  websiteProject       Project?      @relation("AutomationWebsite", fields: [websiteProjectId], references: [id], onDelete: SetNull)
+  incomingBatchHint    String?
+  finalDelivery        Json?
+  deliveryAcceptedById String?
+  deliveryAcceptedBy   User?         @relation("DeliveryAcceptor", fields: [deliveryAcceptedById], references: [id], onDelete: SetNull)
+  deliveryAcceptedAt   DateTime?
+  phases               AutomationPhase[] @relation("PhaseProject")
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  @@index([status])
+}
+
+model AutomationPhase {
+  id          String            @id @default(cuid())
+  projectId   String
+  project     AutomationProject @relation("PhaseProject", fields: [projectId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  order       Int               @default(0)
+  status      PhaseStatus       @default(NOT_STARTED)
+  ownerId     String?
+  owner       User?             @relation("PhaseOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  dueDate     DateTime?
+  dependsOnId String?
+  dependsOn   AutomationPhase?  @relation("PhaseDependency", fields: [dependsOnId], references: [id], onDelete: SetNull)
+  dependents  AutomationPhase[] @relation("PhaseDependency")
+  completedAt DateTime?
+  submissions PhaseSubmission[] @relation("PhaseSubmissions")
+  deliverables Deliverable[]    @relation("PhaseDeliverables")
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([projectId])
+  @@index([status])
+}
+
+model PhaseSubmission {
+  id            String           @id @default(cuid())
+  phaseId       String
+  phase         AutomationPhase  @relation("PhaseSubmissions", fields: [phaseId], references: [id], onDelete: Cascade)
+  version       Int
+  notes         String
+  authorId      String?
+  author        User?            @relation("SubmissionAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  status        String           @default("pending")
+  reviewerId    String?
+  reviewer      User?            @relation("SubmissionReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  reviewComment String?
+  reviewedAt    DateTime?
+  createdAt     DateTime         @default(now())
+
+  @@unique([phaseId, version])
+  @@index([phaseId])
+}
+
+model GitHubConnection {
+  id            String    @id @default(cuid())
+  projectId     String?
+  project       Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  owner         String
+  repo          String
+  branch        String    @default("main")
+  repoId        String?
+  lastSha       String?
+  status        String    @default("connected")
+  connectedById String?
+  connectedBy   User?     @relation("GitHubConnector", fields: [connectedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([projectId])
+  @@index([owner, repo])
+}
+
+model DeploymentRecord {
+  id           String           @id @default(cuid())
+  projectId    String?
+  project      Project?         @relation("DeploymentProject", fields: [projectId], references: [id], onDelete: Cascade)
+  vercelId     String?
+  environment  String           @default("preview")
+  status       DeploymentStatus @default(NOT_CONFIGURED)
+  url          String?
+  previewUrl   String?
+  commitSha    String?
+  errorSummary String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@index([projectId])
+  @@index([status])
+}
+
+model DeploymentConnection {
+  id              String   @id @default(cuid())
+  projectId       String   @unique
+  project         Project  @relation("DeploymentConnProject", fields: [projectId], references: [id], onDelete: Cascade)
+  vercelProjectId String
+  vercelTeamId    String?
+  createdAt       DateTime @default(now())
+}
+
 model Template {
-  id          String   @id @default(cuid())
-  name        String
-  description String
-  steps       String[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String       @id @default(cuid())
+  name         String
+  description  String
+  steps        String[]     @default([])
+  kind         TemplateKind @default(AUTOMATION)
+  version      String?
+  source       String?
+  workflowJson String?
+  repoUrl      String?
+  framework    String?
+  envVarNames  String[]     @default([])
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  body      String?
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt])
 }
 
 model Settings {
@@ -190,16 +612,17 @@ model Settings {
 }
 
 model FileAsset {
-  id           String   @id @default(cuid())
+  id           String               @id @default(cuid())
   name         String
   size         Int
   mimeType     String
   storageKey   String
-  storage      String   @default("local")
+  storage      String               @default("local")
   projectId    String?
-  project      Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  project      Project?             @relation(fields: [projectId], references: [id], onDelete: SetNull)
   uploadedById String?
-  uploadedBy   User?    @relation("FileUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  uploadedBy   User?                @relation("FileUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  versions     DeliverableVersion[] @relation("VersionFile")
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
 }

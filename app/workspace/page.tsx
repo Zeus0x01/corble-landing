@@ -8,10 +8,12 @@ export const dynamic = 'force-dynamic';
 type MonthRow = { month: number; income: number; expenses: number };
 
 export default async function OverviewPage() {
+  const session = await auth();
+  const role = session?.user.role ?? 'MEMBER';
   const now = new Date();
   const yearStart = new Date(now.getFullYear(), 0, 1);
 
-  const [leads, leadAgg, activeProjects, openTasks, highPriority, paymentReceived, expensesPaid, pipeline, upcoming, activeProjectList, activity, months, userCount] =
+  const [leads, leadAgg, activeProjects, openTasks, highPriority, paymentReceived, expensesPaid, pipeline, upcoming, activeProjectList, activity, months, userCount, incomingNew, incomingReview, handoversPending, deliverablesReview, deliverablesChanges, automationsActive, unreadAlerts] =
     await Promise.all([
       db.lead.count(),
       db.lead.groupBy({ by: ['status'], _count: { _all: true }, _sum: { estValue: true } }),
@@ -33,10 +35,16 @@ export default async function OverviewPage() {
         GROUP BY 1
         ORDER BY 1`,
       db.user.count(),
+      db.incomingLead.count({ where: { processingStatus: 'NEW' } }),
+      db.incomingLead.count({ where: { processingStatus: 'UNDER_REVIEW' } }),
+      db.handoverRequest.count({ where: { status: 'PENDING' } }),
+      db.deliverable.count({ where: { status: { in: ['SUBMITTED', 'UNDER_REVIEW'] } } }),
+      db.deliverable.count({ where: { status: 'CHANGES_REQUESTED' } }),
+      db.automationProject.count({ where: { status: { in: ['PLANNING', 'IN_PROGRESS', 'REVIEW'] } } }),
+      db.notification.count({ where: { readAt: null, userId: session?.user?.id ?? '' } }),
     ]);
 
-  const statusOrder: { key: string; label: string; color: string }[] = [
-    { key: 'NEW', label: 'New', color: '#ff8a4c' },
+  const statusOrder: { key: string; label: string; color: string }[] = [    { key: 'NEW', label: 'New', color: '#ff8a4c' },
     { key: 'CONTACTED', label: 'Contacted', color: '#8b5cf6' },
     { key: 'QUALIFIED', label: 'Qualified', color: '#67e8f9' },
     { key: 'PROPOSAL_SENT', label: 'Proposal sent', color: '#a895ff' },
@@ -50,9 +58,6 @@ export default async function OverviewPage() {
   const monthMap = new Map(months.map((m) => [m.month, m]));
   const maxMonth = Math.max(1, ...months.map((m) => Math.max(m.income, m.expenses)));
 
-  const session = await auth();
-  const role = session?.user.role ?? 'MEMBER';
-
   return (
     <>
       <div className="kpis">
@@ -61,6 +66,14 @@ export default async function OverviewPage() {
         <div className="kpi"><div className="klabel">Open tasks</div><div className="num">{openTasks}<small> / {highPriority} high</small></div><div className="kdelta"><span className={highPriority > 0 ? 'down' : 'up'}>{highPriority > 0 ? `${highPriority} need attention` : 'all calm'}</span></div></div>
         <div className="kpi"><div className="klabel">Cash received</div><div className="num">{formatMoney(paymentReceived._sum.amount)}</div><div className="kdelta"><span className="down">{-((expensesPaid._sum.amount ?? 0)) ? `− ${formatMoney(expensesPaid._sum.amount)} expenses` : 'no expenses'}</span></div></div>
         <div className="kpi"><div className="klabel">Team</div><div className="num">{userCount}</div><div className="kdelta"><span className="up">{role === 'ADMIN' ? 'you manage this space' : 'synced workspace'}</span></div></div>
+      </div>
+
+      <div className="kpis" style={{ marginTop: 4 }}>
+        <Link className="kpi" href="/workspace/leads/incoming" style={{ textDecoration: 'none' }}><div className="klabel">Incoming inbox</div><div className="num">{incomingNew}<small> / {incomingReview} in research</small></div><div className="kdelta"><span className={incomingNew > 0 ? 'warn' : 'up'}>{incomingNew > 0 ? 'needs triage' : 'queue processed'}</span></div></Link>
+        <Link className="kpi" href="/workspace/tasks/team" style={{ textDecoration: 'none' }}><div className="klabel">Handovers pending</div><div className="num">{handoversPending}</div><div className="kdelta"><span className={handoversPending > 0 ? 'warn' : 'up'}>{handoversPending > 0 ? 'decisions waiting' : 'no open requests'}</span></div></Link>
+        <Link className="kpi" href="/workspace/deliverables" style={{ textDecoration: 'none' }}><div className="klabel">Deliverables</div><div className="num">{deliverablesReview}<small> / {deliverablesChanges} fixing</small></div><div className="kdelta"><span className={deliverablesReview > 0 ? 'warn' : 'up'}>{deliverablesReview > 0 ? 'await review' : 'review queue clear'}</span></div></Link>
+        <Link className="kpi" href="/workspace/automation" style={{ textDecoration: 'none' }}><div className="klabel">Automation projects</div><div className="num">{automationsActive}</div><div className="kdelta"><span className="up">phase-gated delivery</span></div></Link>
+        <Link className="kpi" href="/workspace/notifications" style={{ textDecoration: 'none' }}><div className="klabel">Unread alerts</div><div className="num">{role === 'ADMIN' ? unreadAlerts : unreadAlerts}</div><div className="kdelta"><span className={unreadAlerts > 0 ? 'warn' : 'up'}>{unreadAlerts > 0 ? 'open notifications' : 'all read'}</span></div></Link>
       </div>
 
       <div className="grid">

@@ -4,17 +4,24 @@ import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 
 const ITEMS: { href: string; icon: string; label: string; admin?: boolean }[] = [
-  { href: '/workspace', icon: '◎', label: 'Overview' },
-  { href: '/workspace/leads', icon: '✉', label: 'Leads / CRM' },
+  { href: '/workspace', icon: '◱', label: 'Overview' },
+  { href: '/workspace/leads', icon: '◈', label: 'Leads / CRM (Final)' },
+  { href: '/workspace/leads/incoming', icon: '▤', label: 'Incoming Leads' },
   { href: '/workspace/projects', icon: '▥', label: 'Projects' },
-  { href: '/workspace/tasks', icon: '☑', label: 'Tasks' },
-  { href: '/workspace/finance', icon: '₪', label: 'Finance' },
-  { href: '/workspace/team', icon: '⛇', label: 'Team', admin: true },
+  { href: '/workspace/tasks', icon: '✓', label: 'My Tasks' },
+  { href: '/workspace/tasks/team', icon: '≡', label: 'Team Tasks' },
+  { href: '/workspace/deliverables', icon: '▣', label: 'Deliverables' },
+  { href: '/workspace/automation', icon: '⚙', label: 'Automation' },
+  { href: '/workspace/github', icon: '⌥', label: 'Websites (GitHub)' },
+  { href: '/workspace/vercel', icon: '▲', label: 'Deployments' },
+  { href: '/workspace/finance', icon: '⌁', label: 'Finance' },
+  { href: '/workspace/team', icon: '⌸', label: 'Team', admin: true },
+  { href: '/workspace/notifications', icon: '◉', label: 'Notifications' },
   { href: '/workspace/calendar', icon: '▦', label: 'Calendar' },
-  { href: '/workspace/files', icon: '☲', label: 'Files' },
-  { href: '/workspace/templates', icon: '⚗', label: 'Templates' },
-  { href: '/workspace/reports', icon: '◔', label: 'Reports' },
-  { href: '/workspace/settings', icon: '✦', label: 'Settings' },
+  { href: '/workspace/files', icon: '▦', label: 'Files' },
+  { href: '/workspace/templates', icon: '❋', label: 'Templates' },
+  { href: '/workspace/reports', icon: '▮', label: 'Reports' },
+  { href: '/workspace/settings', icon: '⚙', label: 'Settings' },
 ];
 
 export default function Sidebar({ role }: { role: string }) {
@@ -31,12 +38,15 @@ export default function Sidebar({ role }: { role: string }) {
       </div>
       <div className="navlabel">Workspace</div>
       <nav className="nav" aria-label="Workspace sections" id="wsnav">
-        {ITEMS.filter((i) => !i.admin || role === 'ADMIN').map((i) => (
-          <Link key={i.href} href={i.href} className={pathname === i.href ? 'active' : ''}>
-            <span className="ico" aria-hidden="true">{i.icon}</span>
-            {i.label}
-          </Link>
-        ))}
+        {ITEMS.filter((i) => !i.admin || role === 'ADMIN').map((i) => {
+          const active = i.href === '/workspace' ? pathname === i.href : pathname.startsWith(i.href);
+          return (
+            <Link key={i.href} href={i.href} className={active ? 'active' : ''}>
+              <span className="ico" aria-hidden="true">{i.icon}</span>
+              {i.label}
+            </Link>
+          );
+        })}
       </nav>
       <div className="sidebottom">
         <div>Team workspace · data lives in PostgreSQL</div>
