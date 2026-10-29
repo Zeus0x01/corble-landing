@@ -2,8 +2,10 @@ import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { labelize, formatDT } from '@/lib/format';
+import { bulkRejectIncoming } from '@/lib/actions';
 import IncomingActions from './IncomingActions';
 import CsvImport from './CsvImport';
+import DataTable, { type DtRow } from '@/components/DataTable';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,6 +47,61 @@ export default async function IncomingLeadsPage({ searchParams }: { searchParams
     }))
   );
 
+  const rows: DtRow[] = leads.map((l) => ({
+    id: l.id,
+    vals: {
+      company: l.company.toLowerCase(),
+      contact: (l.email ?? l.phone ?? l.contactPerson ?? '').toLowerCase(),
+      received: l.receivedAt.toISOString(),
+      source: l.source,
+      verification: l.verification,
+      status: l.processingStatus,
+    },
+    cells: [
+      <>
+        <strong>{l.company}</strong>
+        {l.industry ? <div className="itemsub">{l.industry}</div> : null}
+        {l.website ? <div className="itemsub"><a href={l.website.startsWith('http') ? l.website : `https://${l.website}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--purple)' }}>{l.website} ↗</a></div> : null}
+        <RawPayload raw={l.rawPayload} />
+      </>,
+      <>
+        {l.email ? <div>{l.email}</div> : null}
+        {l.phone ? <div>{l.phone}</div> : null}
+        {l.contactPerson ? <div className="itemsub">{l.contactPerson}</div> : null}
+        {!l.email && !l.phone ? <span className="itemsub">no direct contact</span> : null}
+      </>,
+      <>
+        <div>{l.source}</div>
+        <div className="itemsub">{formatDT(l.receivedAt)}</div>
+        {l.batchId ? <div className="itemsub">batch {l.importBatch?.filename ?? l.batchId.slice(0, 8)}</div> : null}
+      </>,
+      <span key="v" className="pill" style={l.verification === 'INVALID' || l.verification === 'VERIFICATION_FAILED' ? { color: 'var(--acid)' } : l.verification !== 'UNVERIFIED' ? { color: 'var(--green)' } : undefined}>{labelize(l.verification)}</span>,
+      <>
+        {l.researchUpdates.map((r) => (
+          <div key={r.id} className="itemsub">✎ {r.author?.name ?? 'member'}: {r.body}</div>
+        ))}
+        {l.verificationChecks.map((c) => (
+          <div key={c.id} className="itemsub">{c.method}: {labelize(c.result)}{c.detail ? ` — ${c.detail}` : ''}</div>
+        ))}
+        {l.researchUpdates.length === 0 && l.verificationChecks.length === 0 ? <span className="itemsub">nothing yet</span> : null}
+      </>,
+      <>
+        <span key="ps" className="pill" style={l.processingStatus === 'PROMOTED' ? { color: 'var(--green)' } : l.processingStatus === 'REJECTED' ? { color: 'var(--acid)' } : undefined}>{labelize(l.processingStatus)}</span>
+        {l.finalLead ? <div className="itemsub"><a href="/workspace/leads" style={{ color: 'var(--purple)' }}>→ {l.finalLead.name}</a></div> : null}
+      </>,
+      <span key="acts" style={{ maxWidth: 420, display: 'inline-block' }}>
+        <IncomingActions
+          leadId={l.id}
+          company={l.company}
+          processingStatus={l.processingStatus}
+          verification={l.verification}
+          hasContact={Boolean(l.email || l.phone || l.website)}
+          owners={users}
+        />
+      </span>,
+    ],
+  }));
+
   return (
     <>
       <div className="viewhead">
@@ -78,64 +135,21 @@ export default async function IncomingLeadsPage({ searchParams }: { searchParams
         </div>
       ) : null}
 
-      <div className="tablewrap">
-        <table className="table">
-          <thead>
-            <tr><th>Company</th><th>Contact</th><th>Source / received</th><th>Verification</th><th>Research & checks</th><th>Status</th><th>Actions</th></tr>
-          </thead>
-          <tbody>
-            {leads.length === 0 ? (
-              <tr><td colSpan={7} className="empty">No incoming leads match — ingest via n8n webhook or CSV import.</td></tr>
-            ) : (
-              leads.map((l) => (
-                <tr key={l.id}>
-                  <td>
-                    <strong>{l.company}</strong>
-                    {l.industry ? <div className="itemsub">{l.industry}</div> : null}
-                    {l.website ? <div className="itemsub"><a href={l.website.startsWith('http') ? l.website : `https://${l.website}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--purple)' }}>{l.website} ↗</a></div> : null}
-                    <RawPayload raw={l.rawPayload} />
-                  </td>
-                  <td>
-                    {l.email ? <div>{l.email}</div> : null}
-                    {l.phone ? <div>{l.phone}</div> : null}
-                    {l.contactPerson ? <div className="itemsub">{l.contactPerson}</div> : null}
-                    {!l.email && !l.phone ? <span className="itemsub">no direct contact</span> : null}
-                  </td>
-                  <td>
-                    <div>{l.source}</div>
-                    <div className="itemsub">{formatDT(l.receivedAt)}</div>
-                    {l.batchId ? <div className="itemsub">batch {l.importBatch?.filename ?? l.batchId.slice(0, 8)}</div> : null}
-                  </td>
-                  <td><span className="pill" style={l.verification === 'INVALID' || l.verification === 'VERIFICATION_FAILED' ? { color: 'var(--acid)' } : l.verification !== 'UNVERIFIED' ? { color: 'var(--green)' } : undefined}>{labelize(l.verification)}</span></td>
-                  <td>
-                    {l.researchUpdates.map((r) => (
-                      <div key={r.id} className="itemsub">✎ {r.author?.name ?? 'member'}: {r.body}</div>
-                    ))}
-                    {l.verificationChecks.map((c) => (
-                      <div key={c.id} className="itemsub">{c.method}: {labelize(c.result)}{c.detail ? ` — ${c.detail}` : ''}</div>
-                    ))}
-                    {l.researchUpdates.length === 0 && l.verificationChecks.length === 0 ? <span className="itemsub">nothing yet</span> : null}
-                  </td>
-                  <td>
-                    <span className="pill" style={l.processingStatus === 'PROMOTED' ? { color: 'var(--green)' } : l.processingStatus === 'REJECTED' ? { color: 'var(--acid)' } : undefined}>{labelize(l.processingStatus)}</span>
-                    {l.finalLead ? <div className="itemsub"><a href="/workspace/leads" style={{ color: 'var(--purple)' }}>→ {l.finalLead.name}</a></div> : null}
-                  </td>
-                  <td style={{ maxWidth: 420 }}>
-                    <IncomingActions
-                      leadId={l.id}
-                      company={l.company}
-                      processingStatus={l.processingStatus}
-                      verification={l.verification}
-                      hasContact={Boolean(l.email || l.phone || l.website)}
-                      owners={users}
-                    />
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        columns={[
+          { key: 'company', label: 'Company' },
+          { key: 'contact', label: 'Contact' },
+          { key: 'received', label: 'Source / received' },
+          { key: 'verification', label: 'Verification' },
+          { label: 'Research & checks' },
+          { key: 'status', label: 'Status' },
+          { label: 'Actions' },
+        ]}
+        rows={rows}
+        bulk={[{ label: 'Reject selected', action: bulkRejectIncoming, confirm: 'Mark all selected incoming leads as rejected? (promoted ones are skipped)', danger: true }]}
+        empty="No incoming leads match — ingest via n8n webhook or CSV import."
+      />
+
       <div className="sub" style={{ padding: '8px 2px', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         Status filters:
         {['NEW', 'UNDER_REVIEW', 'REJECTED', 'PROMOTED', 'DUPLICATE'].map((s) => (

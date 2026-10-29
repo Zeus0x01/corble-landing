@@ -127,6 +127,15 @@ input:focus, select:focus, textarea:focus { border-color: var(--purple); box-sha
 .itemsub { color: var(--muted); font-size: 12px; margin-top: 2px; }
 .empty { color: var(--soft, #6b7684); padding: 26px 14px !important; text-align: center; }
 
+.table th.sortable { cursor: pointer; user-select: none; }
+.table th.sortable:hover { color: var(--bright, var(--ink)); }
+.table th.selcol, .table td.selcol { width: 40px; text-align: center; padding: 10px 8px; cursor: default; }
+.table th.selcol input, .table td.selcol input { accent-color: var(--acid, var(--purple)); cursor: pointer; }
+.table tbody tr.selrow td { background: color-mix(in srgb, var(--purple) 9%, transparent); }
+.table tbody tr.selrow:hover td { background: color-mix(in srgb, var(--purple) 13%, transparent); }
+.selbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; border-bottom: 1px solid var(--table-line); background: color-mix(in srgb, var(--purple) 7%, transparent); font-size: 12px; color: var(--muted); position: sticky; top: 0; z-index: 2; }
+.selbar strong { color: var(--bright, var(--ink)); letter-spacing: 0.4px; }
+
 .pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 11px; color: var(--muted); font-weight: 700; }
 .pill.new { color: var(--orange); border-color: rgba(255, 138, 76, 0.4); }
 .pill.contacted { color: var(--purple); border-color: rgba(200, 255, 0, 0.42); }

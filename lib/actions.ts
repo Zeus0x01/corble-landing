@@ -225,6 +225,20 @@ export async function deleteLead(raw: unknown): Promise<ActionResult> {
   }
 }
 
+export async function bulkDeleteLeads(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const ids = z.array(z.string().min(1)).min(1).parse(raw);
+    const out = await db.lead.deleteMany({ where: { id: { in: ids } } });
+    await logActivity(u.id, 'Leads bulk-deleted', `${out.count} of ${ids.length} selected`);
+    revalidatePath('/workspace/leads');
+    revalidatePath('/workspace');
+    return okRes(`${out.count} lead${out.count === 1 ? '' : 's'} deleted.`);
+  } catch (e) {
+    return fail(e);
+  }
+}
+
 export async function convertLead(raw: unknown): Promise<ActionResult> {
   try {
     const u = await requireUser();
@@ -1360,6 +1374,32 @@ export async function rejectIncoming(raw: unknown): Promise<ActionResult> {
     await logActivity(u.id, input.restore ? 'Lead restored for review' : 'Lead rejected', lead.company);
     revalidatePath('/workspace/leads/incoming');
     return okRes(input.restore ? 'Lead restored.' : 'Lead marked rejected.');
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function bulkRejectIncoming(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const ids = z.array(z.string().min(1)).min(1).parse(raw);
+    const skipped = { promoted: 0, rejected: 0 };
+    let n = 0;
+    for (const id of ids) {
+      const lead = await db.incomingLead.findUnique({ where: { id }, select: { processingStatus: true } });
+      if (!lead || lead.processingStatus === 'PROMOTED') skipped.promoted++;
+      else if (lead.processingStatus === 'REJECTED') skipped.rejected++;
+      else {
+        await db.incomingLead.update({ where: { id }, data: { processingStatus: 'REJECTED', reviewedById: u.id } });
+        n++;
+      }
+    }
+    await logActivity(u.id, 'Leads bulk-rejected', `${n} rejected (skipped: ${skipped.promoted} promoted, ${skipped.rejected} already rejected)`);
+    revalidatePath('/workspace/leads/incoming');
+    const parts = [`Rejected ${n}.`];
+    if (skipped.promoted) parts.push(`${skipped.promoted} skipped (promoted).`);
+    if (skipped.rejected) parts.push(`${skipped.rejected} already rejected.`);
+    return okRes(parts.join(' '));
   } catch (e) {
     return fail(e);
   }

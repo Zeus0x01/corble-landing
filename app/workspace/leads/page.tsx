@@ -1,9 +1,10 @@
 import { db } from '@/lib/db';
 import { formatMoney, formatDate, labelize, toISODate } from '@/lib/format';
-import { createLead, deleteLead, convertLead, setLeadStatus, updateLead } from '@/lib/actions';
+import { createLead, deleteLead, bulkDeleteLeads, convertLead, setLeadStatus, updateLead } from '@/lib/actions';
 import InlineSelect from '@/components/InlineSelect';
 import ConfirmAction from '@/components/ConfirmAction';
 import ModalForm from '@/components/ModalForm';
+import DataTable, { type DtRow } from '@/components/DataTable';
 import type { FieldSpec } from '@/lib/validators';
 
 export const dynamic = 'force-dynamic';
@@ -39,6 +40,57 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
     db.user.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
   ]);
 
+  const rows: DtRow[] = leads.map((l) => ({
+    id: l.id,
+    vals: {
+      name: l.name.toLowerCase(),
+      source: l.source,
+      status: l.status,
+      value: l.estValue,
+      followup: l.nextFollowUp ? l.nextFollowUp.toISOString() : null,
+      owner: l.owner?.name ?? '',
+    },
+    cells: [
+      <>
+        <strong>{l.name}</strong>
+        <div className="itemsub">{l.contactPerson || '—'} · {l.service}</div>
+      </>,
+      l.source,
+      <InlineSelect
+        key="st"
+        value={l.status}
+        field="status"
+        id={l.id}
+        action={setLeadStatus}
+        options={STATUS.map((s) => ({ value: s, label: labelize(s) }))}
+        alwaysNotify
+      />,
+      formatMoney(l.estValue),
+      formatDate(l.nextFollowUp),
+      l.owner?.name ?? '—',
+      <span key="acts" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        {l.status === 'WON' && l._count.projects === 0 && (
+          <ConfirmAction
+            action={convertLead}
+            payload={l.id}
+            label="Convert to project"
+            confirmText={`Create a project from “${l.name}”?`}
+            className="btn sq"
+            title="Convert to project"
+          >→</ConfirmAction>
+        )}
+        <ModalForm
+          title="Edit lead"
+          trigger="✎"
+          triggerClass="btn sq"
+          action={updateLead}
+          fields={leadFields(owners, { id: l.id, name: l.name, contactPerson: l.contactPerson, service: l.service, source: l.source, status: l.status, estValue: l.estValue, nextFollowUp: l.nextFollowUp, ownerId: l.ownerId })}
+        />
+        <ConfirmAction action={deleteLead} payload={l.id} label="Delete lead" />
+      </span>,
+    ],
+  }));
+
   return (
     <>
       <div className="viewhead">
@@ -54,62 +106,20 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
         />
       </div>
 
-      <div className="tablewrap">
-        <table className="table">
-          <thead>
-            <tr><th>Company / Contact</th><th>Source</th><th>Status</th><th>Est. value</th><th>Follow-up</th><th>Owner</th><th>Actions</th></tr>
-          </thead>
-          <tbody>
-            {leads.length === 0 ? (
-              <tr><td colSpan={7} className="empty">{query ? 'No leads match your search.' : 'No leads yet — add your first one.'}</td></tr>
-            ) : (
-              leads.map((l) => (
-                <tr key={l.id}>
-                  <td>
-                    <strong>{l.name}</strong>
-                    <div className="itemsub">{l.contactPerson || '—'} · {l.service}</div>
-                  </td>
-                  <td>{l.source}</td>
-                  <td>
-                    <InlineSelect
-                      value={l.status}
-                      field="status"
-                      id={l.id}
-                      action={setLeadStatus}
-                      options={STATUS.map((s) => ({ value: s, label: labelize(s) }))}
-                      alwaysNotify
-                    />
-                  </td>
-                  <td>{formatMoney(l.estValue)}</td>
-                  <td>{formatDate(l.nextFollowUp)}</td>
-                  <td>{l.owner?.name ?? '—'}</td>
-                  <td style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    {l.status === 'WON' && l._count.projects === 0 && (
-                      <ConfirmAction
-                        action={convertLead}
-                        payload={l.id}
-                        label="Convert to project"
-                        confirmText={`Create a project from “${l.name}”?`}
-                        className="btn sq"
-                        title="Convert to project"
-                      >→</ConfirmAction>
-                    )}
-                    <ModalForm
-                      title="Edit lead"
-                      trigger="✎"
-                      triggerClass="btn sq"
-                      action={updateLead}
-                      fields={leadFields(owners, { id: l.id, name: l.name, contactPerson: l.contactPerson, service: l.service, source: l.source, status: l.status, estValue: l.estValue, nextFollowUp: l.nextFollowUp, ownerId: l.ownerId })}
-                    />
-                    <ConfirmAction action={deleteLead} payload={l.id} label="Delete lead" />
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        columns={[
+          { key: 'name', label: 'Company / Contact' },
+          { key: 'source', label: 'Source' },
+          { key: 'status', label: 'Status' },
+          { key: 'value', label: 'Est. value' },
+          { key: 'followup', label: 'Follow-up' },
+          { key: 'owner', label: 'Owner' },
+          { label: 'Actions' },
+        ]}
+        rows={rows}
+        bulk={[{ label: 'Delete selected', action: bulkDeleteLeads, confirm: 'Delete all selected leads?', danger: true }]}
+        empty={query ? 'No leads match your search.' : 'No leads yet — add your first one.'}
+      />
     </>
   );
 }
-
