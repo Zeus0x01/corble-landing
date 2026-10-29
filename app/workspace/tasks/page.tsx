@@ -69,11 +69,13 @@ export default async function MyTasksPage({ searchParams }: { searchParams: Prom
       _count: { select: { comments: true, deliverables: true } },
     },
   });
-  const [projects, users, myRequests] = await Promise.all([
+  const [projects, users, myRequests, taskFileCounts] = await Promise.all([
     db.project.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     db.user.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     db.handoverRequest.findMany({ where: { requesterId: meId, status: 'PENDING' }, select: { taskId: true } }),
+    db.fileAsset.groupBy({ by: ['taskId'], _count: { _all: true }, where: { taskId: { not: null } } }),
   ]);
+  const filesByTask = new Map(taskFileCounts.map((g) => [g.taskId, g._count._all] as const));
   const iRequested = new Set(myRequests.map((r) => r.taskId));
 
   const overdue = tasks.filter((t) => t.status !== 'DONE' && t.dueDate && t.dueDate < new Date()).length;
@@ -141,6 +143,9 @@ export default async function MyTasksPage({ searchParams }: { searchParams: Prom
                   </td>
                   <td style={{ color: t.status !== 'DONE' && t.dueDate && t.dueDate < new Date() ? 'var(--acid)' : undefined }}>{formatDate(t.dueDate)}</td>
                   <td style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {(filesByTask.get(t.id) ?? 0) > 0 ? (
+                      <a className="btn sq" href={`/workspace/files?tab=task&id=${t.id}`} title={`Open ${filesByTask.get(t.id)} file(s)`}>▤ {filesByTask.get(t.id)}</a>
+                    ) : null}
                     <TaskActions
                       taskId={t.id}
                       title={t.title}

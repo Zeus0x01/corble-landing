@@ -23,7 +23,7 @@ export default async function IncomingLeadsPage({ searchParams }: { searchParams
   if (status) filters.push({ processingStatus: status as never });
   if (verification) filters.push({ verification: verification as never });
 
-  const [leads, users, batches] = await Promise.all([
+  const [leads, users, incomingLinkCounts, batches] = await Promise.all([
     db.incomingLead.findMany({
       where: filters.length ? { AND: filters } : {},
       orderBy: [{ receivedAt: 'desc' }],
@@ -34,11 +34,14 @@ export default async function IncomingLeadsPage({ searchParams }: { searchParams
         researchUpdates: { orderBy: { createdAt: 'desc' }, take: 3, include: { author: { select: { name: true } } } },
         verificationChecks: { orderBy: { createdAt: 'desc' }, take: 4, include: { checkedBy: { select: { name: true } } } },
         importBatch: { select: { filename: true } },
+        fileLinks: { select: { id: true } },
       },
     }),
     db.user.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+    db.fileLeadLink.groupBy({ by: ['incomingLeadId'], _count: { _all: true }, where: { kind: 'INCOMING' } }),
     db.leadImportBatch.findMany({ orderBy: { createdAt: 'desc' }, take: 6 }),
   ]);
+  const incomingFileCounts = new Map(incomingLinkCounts.map((g) => [g.incomingLeadId, g._count._all] as const));
 
   const counts = await Promise.all(
     (['NEW', 'UNDER_REVIEW', 'REJECTED', 'PROMOTED'] as const).map(async (s) => ({
@@ -90,6 +93,9 @@ export default async function IncomingLeadsPage({ searchParams }: { searchParams
         {l.finalLead ? <div className="itemsub"><a href="/workspace/leads" style={{ color: 'var(--purple)' }}>→ {l.finalLead.name}</a></div> : null}
       </>,
       <span key="acts" style={{ maxWidth: 420, display: 'inline-block' }}>
+        {(incomingFileCounts.get(l.id) ?? 0) > 0 ? (
+          <a className="btn sq" href={`/workspace/files?tab=incoming&id=${l.id}`} title={`Open ${incomingFileCounts.get(l.id)} linked file(s)`}>▤ {incomingFileCounts.get(l.id)}</a>
+        ) : null}
         <IncomingActions
           leadId={l.id}
           company={l.company}

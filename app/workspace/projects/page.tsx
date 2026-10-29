@@ -35,7 +35,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
   const { q } = await searchParams;
   const query = (q ?? '').trim();
 
-  const [projects, leadList, owners] = await Promise.all([
+  const [projects, leadList, owners, fileCounts] = await Promise.all([
     db.project.findMany({
       where: query ? { OR: [{ name: { contains: query, mode: 'insensitive' } }, { clientName: { contains: query, mode: 'insensitive' } }] } : {},
       orderBy: [{ status: 'asc' }, { dueDate: { sort: 'asc', nulls: 'last' } }],
@@ -43,7 +43,9 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
     }),
     db.lead.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     db.user.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+    db.fileAsset.groupBy({ by: ['projectId'], _count: { _all: true }, where: { projectId: { not: null } } }),
   ]);
+  const filesByProject = new Map(fileCounts.map((g) => [g.projectId, g._count._all] as const));
 
   return (
     <>
@@ -93,6 +95,9 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
                   <td>{formatDate(p.dueDate)}</td>
                   <td>{formatMoney(p.budget)}</td>
                   <td style={{ display: 'flex', gap: 6 }}>
+                    {(filesByProject.get(p.id) ?? 0) > 0 ? (
+                      <a className="btn sq" href={`/workspace/files?tab=project&id=${p.id}`} title={`Open ${filesByProject.get(p.id)} file(s)`}>▤ {filesByProject.get(p.id)}</a>
+                    ) : null}
                     <ModalForm
                       title="Edit project"
                       trigger="✎"

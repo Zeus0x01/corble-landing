@@ -1991,44 +1991,26 @@ export async function moveFile(raw: unknown): Promise<ActionResult> {
         assetId: z.string().min(1),
         projectId: z.string().nullable().optional(),
         taskId: z.string().nullable().optional(),
-        leadId: z.string().nullable().optional(),
       })
       .parse(raw);
     const asset = await db.fileAsset.findUnique({ where: { id: input.assetId }, select: { id: true, uploadedById: true, name: true } });
     if (!asset) return { ok: false, error: 'File not found.' };
     if (u.role !== 'ADMIN' && asset.uploadedById !== u.id) return { ok: false, error: 'Only admins (or the uploader) can move files.' };
 
-    // Validate targets.
     if (input.taskId) {
-      const task = await db.task.findUnique({ where: { id: input.taskId }, select: { id: true, projectId: true } });
+      const task = await db.task.findUnique({ where: { id: input.taskId }, select: { id: true } });
       if (!task) return { ok: false, error: 'Task not found.' };
-      const patch = {
-        taskId: task.id,
-        leadId: null as string | null,
-        projectId: task.projectId,
-      };
-      const moved = await db.fileAsset.update({ where: { id: asset.id }, data: patch });
+      const moved = await db.fileAsset.update({ where: { id: asset.id }, data: { taskId: task.id, projectId: null } });
       await logActivity(u.id, 'File moved to task', `${asset.name} -> task ${input.taskId}`);
       revalidatePath('/workspace/files');
       return okRes(`"${moved.name}" attached to the task.`);
-    }
-    if (input.leadId) {
-      const lead = await db.lead.findUnique({ where: { id: input.leadId }, select: { id: true } });
-      if (!lead) return { ok: false, error: 'Lead not found.' };
-      const moved = await db.fileAsset.update({
-        where: { id: asset.id },
-        data: { taskId: null, leadId: lead.id, projectId: null },
-      });
-      await logActivity(u.id, 'File moved to lead', `${asset.name} -> lead ${input.leadId}`);
-      revalidatePath('/workspace/files');
-      return okRes(`"${moved.name}" attached to the lead.`);
     }
     if (input.projectId) {
       const project = await db.project.findUnique({ where: { id: input.projectId }, select: { id: true } });
       if (!project) return { ok: false, error: 'Project not found.' };
       const moved = await db.fileAsset.update({
         where: { id: asset.id },
-        data: { taskId: null, leadId: null, projectId: project.id },
+        data: { taskId: null, projectId: project.id },
       });
       await logActivity(u.id, 'File moved to project', `${asset.name} -> ${input.projectId}`);
       revalidatePath('/workspace/files');
@@ -2036,11 +2018,88 @@ export async function moveFile(raw: unknown): Promise<ActionResult> {
     }
     const moved = await db.fileAsset.update({
       where: { id: asset.id },
-      data: { taskId: null, leadId: null, projectId: null },
+      data: { taskId: null, projectId: null },
     });
-    await logActivity(u.id, 'File detached', asset.name);
+    await logActivity(u.id, 'File detached to library', asset.name);
     revalidatePath('/workspace/files');
     return okRes(`"${moved.name}" is back in the shared library.`);
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function linkCompanies(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = z
+      .object({
+        assetId: z.string().min(1),
+        companies: z.array(z.object({ kind: z.enum(['LEAD', 'INCOMING']), id: z.string().min(1) })).min(1),
+      })
+      .parse(raw);
+    const asset = await db.fileAsset.findUnique({ where: { id: input.assetId }, select: { uploadedById: true, name: true } });
+    if (!asset) return { ok: false, error: 'File not found.' };
+    if (u.role !== 'ADMIN' && asset.uploadedById !== u.id) return { ok: false, error: 'Only admins (or the uploader) can link companies.' };
+
+    const existing = await db.fileLeadLink.findMany({
+      where: { fileAssetId: input.assetId },
+      select: { kind: true, leadId: true, incomingLeadId: true },
+    });
+    const dup = (k: string, id: string) =>
+      existing.some((l) => l.kind === k && (k === 'LEAD' ? l.leadId === id : l.incomingLeadId === id));
+
+    let added = 0;
+    let skipped = 0;
+    const errors: string[] = [];
+    for (const c of input.companies) {
+      if (dup(c.kind, c.id)) {
+        skipped++;
+        continue;
+      }
+      if (c.kind === 'LEAD') {
+        const lead = await db.lead.findUnique({ where: { id: c.id }, select: { id: true } });
+        if (!lead) {
+          errors.push('lead not found');
+          continue;
+        }
+        await db.fileLeadLink.create({ data: { kind: 'LEAD', leadId: c.id, fileAssetId: input.assetId } });
+      } else {
+        const incoming = await db.incomingLead.findUnique({ where: { id: c.id }, select: { id: true } });
+        if (!incoming) {
+          errors.push('incoming lead not found');
+          continue;
+        }
+        await db.fileLeadLink.create({ data: { kind: 'INCOMING', incomingLeadId: c.id, fileAssetId: input.assetId } });
+      }
+      added++;
+    }
+    if (added) await logActivity(u.id, 'Companies linked to file', `${asset.name}: +${added}`);
+    revalidatePath('/workspace/files');
+    const parts = [`Linked ${added} compan${added === 1 ? 'y' : 'ies'}.`];
+    if (skipped) parts.push(`${skipped} already linked.`);
+    if (errors.length) parts.push(`${errors.length} not found.`);
+    return okRes(parts.join(' '));
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function unlinkCompanies(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = z
+      .object({
+        assetId: z.string().min(1),
+        linkIds: z.array(z.string().min(1)).min(1),
+      })
+      .parse(raw);
+    const asset = await db.fileAsset.findUnique({ where: { id: input.assetId }, select: { uploadedById: true, name: true } });
+    if (!asset) return { ok: false, error: 'File not found.' };
+    if (u.role !== 'ADMIN' && asset.uploadedById !== u.id) return { ok: false, error: 'Only admins (or the uploader) can unlink companies.' };
+    const out = await db.fileLeadLink.deleteMany({ where: { id: { in: input.linkIds }, fileAssetId: input.assetId } });
+    if (out.count) await logActivity(u.id, 'Companies unlinked from file', `${asset.name}: -${out.count}`);
+    revalidatePath('/workspace/files');
+    return okRes(`Removed ${out.count} company link${out.count === 1 ? '' : 's'}.`);
   } catch (e) {
     return fail(e);
   }

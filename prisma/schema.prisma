@@ -122,6 +122,27 @@ enum TemplateKind {
   WEBSITE
 }
 
+enum FileLinkKind {
+  LEAD
+  INCOMING
+}
+
+model FileLeadLink {
+  id             String        @id @default(cuid())
+  kind           FileLinkKind
+  leadId         String?
+  lead           Lead?         @relation("LeadFileLinks", fields: [leadId], references: [id], onDelete: Cascade)
+  incomingLeadId String?
+  incomingLead   IncomingLead? @relation("IncomingFileLinks", fields: [incomingLeadId], references: [id], onDelete: Cascade)
+  fileAssetId    String
+  fileAsset      FileAsset     @relation("FileLeadLinks", fields: [fileAssetId], references: [id], onDelete: Cascade)
+  createdAt      DateTime      @default(now())
+
+  @@index([fileAssetId])
+  @@index([leadId])
+  @@index([incomingLeadId])
+}
+
 model FinanceRecord {
   id          String        @id @default(cuid())
   type        FinanceType
@@ -206,7 +227,7 @@ model Lead {
   owner         User?      @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   projects      Project[]
   fromIncoming  IncomingLead[] @relation("IncomingFinal")
-  files         FileAsset[]    @relation("LeadFile")
+  fileLinks     FileLeadLink[] @relation("LeadFileLinks")
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
@@ -386,7 +407,8 @@ model IncomingLead {
   reviewedBy       User?                  @relation("IncomingReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   processingStatus IncomingProcessing     @default(NEW)
   finalLeadId      String?
-  finalLead        Lead?                  @relation("IncomingFinal", fields: [finalLeadId], references: [id], onDelete: SetNull)
+  finalLead      Lead?         @relation("IncomingFinal", fields: [finalLeadId], references: [id], onDelete: SetNull)
+  fileLinks      FileLeadLink[] @relation("IncomingFileLinks")
   ingestKey        String?                @unique
   importBatchId    String?
   importBatch      LeadImportBatch?       @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
@@ -624,15 +646,13 @@ model FileAsset {
   project      Project?             @relation(fields: [projectId], references: [id], onDelete: SetNull)
   taskId       String?
   task         Task?                @relation("TaskFile", fields: [taskId], references: [id], onDelete: SetNull)
-  leadId       String?
-  lead         Lead?                @relation("LeadFile", fields: [leadId], references: [id], onDelete: SetNull)
   uploadedById String?
   uploadedBy   User?                @relation("FileUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
   versions     DeliverableVersion[] @relation("VersionFile")
+  leadLinks    FileLeadLink[]       @relation("FileLeadLinks")
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
 
   @@index([projectId])
   @@index([taskId])
-  @@index([leadId])
 }

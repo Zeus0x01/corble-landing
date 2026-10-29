@@ -31,14 +31,16 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
   const { q } = await searchParams;
   const query = (q ?? '').trim();
 
-  const [leads, owners] = await Promise.all([
+  const [leads, owners, leadLinkCounts] = await Promise.all([
     db.lead.findMany({
       where: query ? { OR: [{ name: { contains: query, mode: 'insensitive' } }, { contactPerson: { contains: query, mode: 'insensitive' } }, { service: { contains: query, mode: 'insensitive' } }] } : {},
       orderBy: [{ nextFollowUp: { sort: 'asc', nulls: 'last' } }, { createdAt: 'desc' }],
-      include: { owner: { select: { id: true, name: true } }, _count: { select: { projects: true } } },
+      include: { owner: { select: { id: true, name: true } }, fileLinks: { select: { id: true } }, _count: { select: { projects: true } } },
     }),
     db.user.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+    db.fileLeadLink.groupBy({ by: ['leadId'], _count: { _all: true }, where: { kind: 'LEAD' } }),
   ]);
+  const filesByLead = new Map(leadLinkCounts.map((g) => [g.leadId, g._count._all] as const));
 
   const rows: DtRow[] = leads.map((l) => ({
     id: l.id,
@@ -68,7 +70,10 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       formatMoney(l.estValue),
       formatDate(l.nextFollowUp),
       l.owner?.name ?? '—',
-      <span key="acts" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <span key="acts" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        {(filesByLead.get(l.id) ?? 0) > 0 ? (
+          <a className="btn sq" href={`/workspace/files?tab=lead&id=${l.id}`} title={`Open ${(filesByLead.get(l.id) ?? 0)} linked file(s)`}>▤ {filesByLead.get(l.id)}</a>
+        ) : null}
         {l.status === 'WON' && l._count.projects === 0 && (
           <ConfirmAction
             action={convertLead}
