@@ -51,6 +51,49 @@ export async function saveUpload(file: File): Promise<{ storageKey: string; stor
   return { storageKey: key, storage: 'local' };
 }
 
+/** Save raw text/JSON content produced internally (e.g. workflow exports) as a file asset. */
+export async function saveContent(name: string, mimeType: string, content: string): Promise<{ storageKey: string; storage: StoredIn; size: number }> {
+  const body = Buffer.from(content, 'utf8');
+  const safeName = name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^\.+/, '').slice(-120) || 'file';
+  const key = `${Date.now()}-${Math.floor(Math.random() * 1e9)}-${safeName}`;
+
+  if (hasS3()) {
+    const res = await s3Client().fetch(s3ObjectUrl(key), {
+      method: 'PUT',
+      body,
+      headers: { 'content-type': mimeType },
+    });
+    if (!res.ok) throw new Error(`Storage upload failed (${res.status})`);
+    return { storageKey: key, storage: 's3', size: body.byteLength };
+  }
+
+  const fs = await import('fs');
+  const path = await import('path');
+  const dir = path.join(process.cwd(), 'uploads');
+  await fs.promises.mkdir(dir, { recursive: true });
+  await fs.promises.writeFile(path.join(dir, key), body);
+  return { storageKey: key, storage: 'local', size: body.byteLength };
+}
+
+/** Read back a stored local upload as text (used for file pickers that need contents). */
+export async function readStoredText(storageKey: string, storage: string, fallbackUrl?: null): Promise<string | null> {
+  if (storage === 'local') {
+    const buf = await readLocalUpload(storageKey);
+    return buf ? buf.toString('utf8') : null;
+  }
+  try {
+    if (hasS3()) {
+      const signed = await s3Client().sign(new Request(s3ObjectUrl(storageKey)), { aws: { signQuery: true } });
+      const res = await fetch(signed.url, { cache: 'no-store' });
+      if (!res.ok) return null;
+      return await res.text();
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 /** Presigned GET URL for S3 storage; local files are streamed by the authenticated route. */
 export async function fileDownloadUrl(assetId: string): Promise<string | null> {
   const asset = await db.fileAsset.findUnique({ where: { id: assetId } });

@@ -1,11 +1,10 @@
 import { db } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { githubConfigured } from '@/lib/github';
-import { connectGithub, disconnectGithub } from '@/lib/actions';
-import ModalForm from '@/components/ModalForm';
+import { disconnectGithub } from '@/lib/actions';
 import ConfirmAction from '@/components/ConfirmAction';
 import GitHubBrowser from './GitHubBrowser';
-import type { FieldSpec } from '@/lib/validators';
+import RepoConnect from './RepoConnect';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,13 +22,6 @@ export default async function GitHubPage() {
     db.project.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
   ]);
 
-  const connFields: FieldSpec[] = [
-    { label: 'Website project', name: 'projectId', type: 'select', required: true, full: true, options: projects.map((p) => ({ value: p.id, label: p.name })) },
-    { label: 'Owner (org or user)', name: 'owner', required: true, value: '' },
-    { label: 'Repo name', name: 'repo', required: true, value: '' },
-    { label: 'Branch (never main/master/production for writes)', name: 'branch', value: 'main' },
-  ];
-
   const unlinked = projects.filter((p) => !connections.some((c) => c.projectId === p.id));
 
   return (
@@ -38,17 +30,10 @@ export default async function GitHubPage() {
         <div>
           <h2>Websites (GitHub)</h2>
           <div className="sub">
-            {connections.length} connected repos · browsing is read-only for members; commits hit the PAT, admin-only, never to main/production branches
+            {connections.length} connected repos · browsing is read-only for members; commits hit the PAT, admin-only, never to main/master/production branches
           </div>
         </div>
-        {admin ? (
-          <ModalForm
-            title={unlinked.length === 0 ? 'All projects have connections' : 'Connect GitHub repo to a project'}
-            trigger="＋ Connect repo"
-            action={connectGithub}
-            fields={connFields}
-          />
-        ) : null}
+        {admin ? <RepoConnect projects={unlinked} /> : null}
       </div>
 
       {!githubConfigured() ? (

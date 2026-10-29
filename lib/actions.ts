@@ -1635,3 +1635,56 @@ export async function importTemplate(raw: unknown): Promise<ActionResult> {
 }
 
 
+
+
+export async function exportN8nWorkflow(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = z.object({ workflowId: z.string().min(1).max(80) }).parse(raw);
+    if (u.role !== 'ADMIN') return { ok: false, error: 'Only admins can export n8n workflows.' };
+    const { getWorkflow, n8nConfigured } = await import('@/lib/n8n');
+    const { saveContent } = await import('@/lib/storage');
+    if (!n8nConfigured()) return { ok: false, error: 'n8n not configured (N8N_BASE_URL / N8N_API_KEY).' };
+    const { summary, json } = await getWorkflow(input.workflowId);
+    const content = JSON.stringify(json, null, 2);
+    const fileName = `${summary.name.replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 80)}-wf-${summary.id}.json`;
+    const saved = await saveContent(fileName, 'application/json', content);
+    const asset = await db.fileAsset.create({
+      data: {
+        name: fileName,
+        size: saved.size,
+        mimeType: 'application/json',
+        storageKey: saved.storageKey,
+        storage: saved.storage,
+        uploadedById: u.id,
+      },
+    });
+    await logActivity(u.id, 'n8n workflow exported', `${summary.name} -> files/${asset.id}`);
+    revalidatePath('/workspace/files');
+    revalidatePath('/workspace/n8n');
+    return okRes(`Exported ${summary.name} to Files.`);
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function importN8nWorkflow(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const input = z.object({ assetId: z.string().min(1), name: z.string().max(120).optional() }).parse(raw);
+    if (u.role !== 'ADMIN') return { ok: false, error: 'Only admins can import n8n workflows.' };
+    const { readStoredText } = await import('@/lib/storage');
+    const { createWorkflow, n8nConfigured } = await import('@/lib/n8n');
+    if (!n8nConfigured()) return { ok: false, error: 'n8n not configured (N8N_BASE_URL / N8N_API_KEY).' };
+    const asset = await db.fileAsset.findUnique({ where: { id: input.assetId } });
+    if (!asset) return { ok: false, error: 'File not found.' };
+    const direct = await readStoredText(asset.storageKey, asset.storage);
+    if (!direct) return { ok: false, error: 'File content unreadable — try downloading it first and re-importing.' };
+    const created = await createWorkflow(direct, input.name);
+    await logActivity(u.id, 'n8n workflow imported', `${created.name} -> n8n id ${created.id} (from ${asset.name})`);
+    revalidatePath('/workspace/n8n');
+    return okRes(`Imported to n8n as id ${created.id} (${created.name}).`);
+  } catch (e) {
+    return fail(e);
+  }
+}

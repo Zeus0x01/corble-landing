@@ -60,7 +60,18 @@
 [data-theme='light'][data-ws] .wsbrand span { background: linear-gradient(100deg, #25203b 35%, #7054c7); background-clip: text; }
 .navlabel { color: #69758c; font-size: 10px; font-weight: 800; letter-spacing: 1.5px; padding: 12px 11px 7px; text-transform: uppercase; }
 [data-theme='light'][data-ws] .navlabel { color: #7b8498; }
-[data-ws] .nav { display: grid; gap: 4px; }
+.navgroup { margin-top: 10px; }
+.navgroup:first-child { margin-top: 0; }
+.navgrouptoggle { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 10px 11px 5px; background: transparent; border: 0; cursor: pointer; }
+.navgrouptoggle:hover .navlabel2 { color: #b9c3d6; }
+.navlabel2 { color: #69758c; font-size: 10px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; }
+[data-theme='light'][data-ws] .navlabel2 { color: #7b8498; }
+.navgroup .chev { width: 7px; height: 7px; border-right: 1.5px solid #69758c; border-bottom: 1.5px solid #69758c; transform: rotate(45deg); margin: -2px 3px 0 0; transition: transform 0.15s ease; opacity: 0.7; }
+.navgroup.collapsed .chev { transform: rotate(-45deg); }
+.navgroupitems { display: grid; gap: 3px; }
+.navgroup.collapsed .navgroupitems { display: none; }
+[data-ws] .nav { display: block; }
+[data-ws] .nav a { text-align: left; padding: 10px 12px; border-radius: 10px; display: flex; align-items: center; gap: 12px; color: var(--nav-text); margin-bottom: 1px; }
 [data-ws] .nav a { text-align: left; padding: 11px 12px; border-radius: 10px; display: flex; align-items: center; gap: 12px; color: var(--nav-text); }
 [data-ws] .nav a:hover { background: var(--nav-hover); color: var(--text); }
 [data-ws] .nav a.active { background: linear-gradient(100deg, rgba(124, 58, 237, 0.21), rgba(139, 92, 246, 0.04)); color: var(--nav-active); box-shadow: inset 3px 0 #9b75ff; }

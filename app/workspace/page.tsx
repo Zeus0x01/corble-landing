@@ -13,16 +13,13 @@ export default async function OverviewPage() {
   const now = new Date();
   const yearStart = new Date(now.getFullYear(), 0, 1);
 
-  const [leads, leadAgg, activeProjects, openTasks, highPriority, paymentReceived, expensesPaid, pipeline, upcoming, activeProjectList, activity, months, userCount, incomingNew, incomingReview, handoversPending, deliverablesReview, deliverablesChanges, automationsActive, unreadAlerts] =
+  const [leadAgg, activeProjects, taskByPriority, paymentReceived, expensesPaid, upcoming, activeProjectList, activity, months, userCount, incomingNew, incomingReview, handoversPending, deliverablesReview, deliverablesChanges, automationsActive, unreadAlerts] =
     await Promise.all([
-      db.lead.count(),
       db.lead.groupBy({ by: ['status'], _count: { _all: true }, _sum: { estValue: true } }),
       db.project.count({ where: { status: { in: ['IN_PROGRESS', 'REVIEW'] } } }),
-      db.task.count({ where: { status: { not: 'DONE' } } }),
-      db.task.count({ where: { status: { not: 'DONE' }, priority: 'HIGH' } }),
+      db.task.groupBy({ by: ['priority'], where: { status: { not: 'DONE' } }, _count: { _all: true } }),
       db.financeRecord.aggregate({ _sum: { amount: true }, where: { type: 'PAYMENT', status: 'RECEIVED' } }),
       db.financeRecord.aggregate({ _sum: { amount: true }, where: { type: 'EXPENSE' } }),
-      db.lead.aggregate({ _sum: { estValue: true }, where: { status: { in: ['CONTACTED', 'QUALIFIED', 'PROPOSAL_SENT'] } } }),
       db.lead.findMany({ where: { nextFollowUp: { not: null } }, orderBy: { nextFollowUp: 'asc' }, take: 5 }),
       db.project.findMany({ where: { status: { in: ['IN_PROGRESS', 'REVIEW', 'PLANNING'] } }, orderBy: { dueDate: 'asc' }, take: 5, include: { owner: { select: { name: true } } } }),
       db.activity.findMany({ orderBy: { createdAt: 'desc' }, take: 6, include: { user: { select: { name: true } } } }),
@@ -44,6 +41,13 @@ export default async function OverviewPage() {
       db.notification.count({ where: { readAt: null, userId: session?.user?.id ?? '' } }),
     ]);
 
+  const leads = leadAgg.reduce((sum, a) => sum + a._count._all, 0);
+  const openTasks = taskByPriority.reduce((sum, a) => sum + a._count._all, 0);
+  const highPriority = taskByPriority.find((a) => a.priority === 'HIGH')?._count._all ?? 0;
+  const pipelineValue = leadAgg
+    .filter((a) => ['CONTACTED', 'QUALIFIED', 'PROPOSAL_SENT'].includes(a.status))
+    .reduce((sum, a) => sum + (a._sum.estValue ?? 0), 0);
+
   const statusOrder: { key: string; label: string; color: string }[] = [    { key: 'NEW', label: 'New', color: '#ff8a4c' },
     { key: 'CONTACTED', label: 'Contacted', color: '#8b5cf6' },
     { key: 'QUALIFIED', label: 'Qualified', color: '#67e8f9' },
@@ -61,7 +65,7 @@ export default async function OverviewPage() {
   return (
     <>
       <div className="kpis">
-        <div className="kpi"><div className="klabel">Total leads</div><div className="num">{leads}</div><div className="kdelta"><span className="up">{pipeline._sum.estValue ?? 0 > 0 ? `${formatMoney(pipeline._sum.estValue, 'EGP')} in play` : 'Pipeline empty'}</span></div></div>
+        <div className="kpi"><div className="klabel">Total leads</div><div className="num">{leads}</div><div className="kdelta"><span className="up">{pipelineValue > 0 ? `${formatMoney(pipelineValue, 'EGP')} in play` : 'Pipeline empty'}</span></div></div>
         <div className="kpi"><div className="klabel">Active projects</div><div className="num">{activeProjects}</div><div className="kdelta"><span className="warn">delivery in motion</span></div></div>
         <div className="kpi"><div className="klabel">Open tasks</div><div className="num">{openTasks}<small> / {highPriority} high</small></div><div className="kdelta"><span className={highPriority > 0 ? 'down' : 'up'}>{highPriority > 0 ? `${highPriority} need attention` : 'all calm'}</span></div></div>
         <div className="kpi"><div className="klabel">Cash received</div><div className="num">{formatMoney(paymentReceived._sum.amount)}</div><div className="kdelta"><span className="down">{-((expensesPaid._sum.amount ?? 0)) ? `− ${formatMoney(expensesPaid._sum.amount)} expenses` : 'no expenses'}</span></div></div>

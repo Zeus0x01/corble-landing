@@ -61,6 +61,42 @@ export type GhEntry = {
   git_url: string;
 };
 
+export interface GhRepoMeta {
+  id: number;
+  fullName: string;
+  name: string;
+  owner: string;
+  defaultBranch: string;
+  private: boolean;
+  htmlUrl: string;
+  updatedAt: string;
+}
+
+export async function listRepos(): Promise<GhRepoMeta[]> {
+  const out = await ghJson<Array<{
+    id: number;
+    full_name: string;
+    name: string;
+    owner: { login: string };
+    default_branch: string;
+    private: boolean;
+    html_url: string;
+    updated_at: string;
+  }>>('/user/repos?per_page=100&sort=updated&visibility=all&affiliation=owner,collaborator,organization_member');
+  return out
+    .map((r) => ({
+      id: r.id,
+      fullName: r.full_name,
+      name: r.name,
+      owner: r.owner.login,
+      defaultBranch: r.default_branch || 'main',
+      private: r.private,
+      htmlUrl: r.html_url,
+      updatedAt: r.updated_at,
+    }))
+    .sort((a, b) => a.fullName.localeCompare(b.fullName));
+}
+
 export async function listTree(owner: string, repo: string, branch: string, dir: string) {
   const enc = encodeURIComponent(dir).replace(/%2F/g, '/');
   const entries = await ghJson<GhEntry[]>(`/repos/${owner}/${repo}/contents/${dir ? enc : ''}?ref=${encodeURIComponent(branch)}`);

@@ -2,35 +2,84 @@
 
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
+import { useState } from 'react';
 
-const ITEMS: { href: string; icon: string; label: string; admin?: boolean }[] = [
-  { href: '/workspace', icon: '◱', label: 'Overview' },
-  { href: '/workspace/leads', icon: '◆', label: 'Leads / CRM (Final)' },
-  { href: '/workspace/leads/incoming', icon: '▤', label: 'Incoming Leads' },
-  { href: '/workspace/projects', icon: '▥', label: 'Projects' },
-  { href: '/workspace/tasks', icon: '☑', label: 'My Tasks' },
-  { href: '/workspace/tasks/team', icon: '≡', label: 'Team Tasks' },
-  { href: '/workspace/deliverables', icon: '▣', label: 'Deliverables' },
-  { href: '/workspace/automation', icon: '⚙', label: 'Automation' },
-  { href: '/workspace/github', icon: '⌥', label: 'Websites (GitHub)' },
-  { href: '/workspace/vercel', icon: '▲', label: 'Deployments' },
-  { href: '/workspace/finance', icon: '₪', label: 'Finance' },
-  { href: '/workspace/team', icon: '⛇', label: 'Team', admin: true },
-  { href: '/workspace/profile/me', icon: '☺', label: 'My Profile' },
-  { href: '/workspace/notifications', icon: '◉', label: 'Notifications' },
-  { href: '/workspace/calendar', icon: '▦', label: 'Calendar' },
-  { href: '/workspace/files', icon: '▦', label: 'Files' },
-  { href: '/workspace/templates', icon: '❋', label: 'Templates' },
-  { href: '/workspace/reports', icon: '▮', label: 'Reports' },
-  { href: '/workspace/settings', icon: '⚙', label: 'Settings' },
+type Item = { href: string; icon: string; label: string; admin?: boolean };
+type Group = { title: string; items: Item[] };
+
+const GROUPS: Group[] = [
+  {
+    title: 'Workspace',
+    items: [
+      { href: '/workspace', icon: '◱', label: 'Overview' },
+      { href: '/workspace/calendar', icon: '▦', label: 'Calendar' },
+      { href: '/workspace/notifications', icon: '◉', label: 'Notifications' },
+      { href: '/workspace/profile/me', icon: '☺', label: 'My Profile' },
+    ],
+  },
+  {
+    title: 'Delivery',
+    items: [
+      { href: '/workspace/projects', icon: '▥', label: 'Projects' },
+      { href: '/workspace/tasks', icon: '☑', label: 'My Tasks' },
+      { href: '/workspace/tasks/team', icon: '≡', label: 'Team Tasks' },
+      { href: '/workspace/deliverables', icon: '▣', label: 'Deliverables' },
+      { href: '/workspace/automation', icon: '⚙', label: 'Automation' },
+    ],
+  },
+  {
+    title: 'Growth',
+    items: [
+      { href: '/workspace/leads', icon: '◆', label: 'Leads / CRM (Final)' },
+      { href: '/workspace/leads/incoming', icon: '▤', label: 'Incoming Leads' },
+      { href: '/workspace/finance', icon: '₪', label: 'Finance' },
+    ],
+  },
+  {
+    title: 'Websites & Deploy',
+    items: [
+      { href: '/workspace/github', icon: '⌥', label: 'Websites (GitHub)' },
+      { href: '/workspace/vercel', icon: '▲', label: 'Deployments' },
+      { href: '/workspace/n8n', icon: '⁂', label: 'n8n Workflows', admin: true },
+    ],
+  },
+  {
+    title: 'Library',
+    items: [
+      { href: '/workspace/files', icon: '▦', label: 'Files' },
+      { href: '/workspace/templates', icon: '❋', label: 'Templates' },
+      { href: '/workspace/reports', icon: '▮', label: 'Reports' },
+    ],
+  },
+  {
+    title: 'Admin',
+    items: [
+      { href: '/workspace/team', icon: '⛇', label: 'Team', admin: true },
+      { href: '/workspace/settings', icon: '⚙', label: 'Settings' },
+    ],
+  },
 ];
+
+function matchesPath(path: string, href: string): boolean {
+  if (href === '/workspace/profile/me') return path === href || path.startsWith('/workspace/profile');
+  return path === href || (href !== '/workspace' && path.startsWith(href + '/'));
+}
+
+function isActive(pathname: string, item: Item, allItems: Item[]): boolean {
+  if (!matchesPath(pathname, item.href)) return false;
+  const best = allItems
+    .filter((j) => matchesPath(pathname, j.href))
+    .reduce((best, j) => (j.href.length > best.length ? j.href : best), '/workspace');
+  return item.href === best;
+}
 
 export default function Sidebar({ role }: { role: string }) {
   const pathname = usePathname();
+  const isAdmin = role === 'ADMIN';
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
-  function matchesPath(path: string, href: string): boolean {
-    if (href === '/workspace/profile/me') return path === href || path.startsWith('/workspace/profile');
-    return path === href || (href !== '/workspace' && path.startsWith(href + '/'));
+  function toggle(title: string) {
+    setCollapsed((prev) => ({ ...prev, [title]: !prev[title] }));
   }
 
   return (
@@ -43,23 +92,39 @@ export default function Sidebar({ role }: { role: string }) {
         <span className="dot" aria-hidden="true" />
         <span style={{ fontSize: 12.5 }}>Workspace online</span>
       </div>
-      <div className="navlabel">Workspace</div>
       <nav className="nav" aria-label="Workspace sections" id="wsnav">
-        {ITEMS.filter((i) => !i.admin || role === 'ADMIN').map((i) => {
-          const visible = ITEMS.filter((j) => !j.admin || role === 'ADMIN');
-          const best = visible.reduce((best, j) => (matchesPath(pathname, j.href) && j.href.length >= best.length ? j.href : best), '/workspace');
-          const active = matchesPath(pathname, i.href) && (i.href === best || (!matchesPath(pathname, '/workspace') && best === '/workspace'));
+        {GROUPS.map((group) => {
+          const visibleItems = group.items.filter((i) => !i.admin || isAdmin);
+          if (visibleItems.length === 0) return null;
+          const allItems = visibleItems;
+          const hasActive = visibleItems.some((i) => isActive(pathname, i, allItems));
           return (
-            <Link key={i.href} href={i.href} className={active ? 'active' : ''}>
-              <span className="ico" aria-hidden="true">{i.icon}</span>
-              {i.label}
-            </Link>
+            <div key={group.title} className={`navgroup${collapsed[group.title] && !hasActive ? ' collapsed' : ''}`}>
+              <button
+                type="button"
+                className="navgrouptoggle"
+                onClick={() => toggle(group.title)}
+                aria-expanded={collapsed[group.title] && !hasActive ? 'false' : 'true'}
+              >
+                <span className="navlabel2">{group.title}</span>
+                <span className="chev" aria-hidden="true" />
+              </button>
+              <div className="navgroupitems">
+                {visibleItems.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={isActive(pathname, item, allItems) ? 'active' : ''}
+                  >
+                    <span className="ico" aria-hidden="true">{item.icon}</span>
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+            </div>
           );
         })}
       </nav>
-      <div className="sidebottom">
-        <Link href="/" style={{ display: 'inline-block', marginTop: 8, color: 'var(--nav-active)' }}>← Back to site</Link>
-      </div>
     </aside>
   );
 }
