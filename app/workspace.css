@@ -253,3 +253,156 @@ input:focus, select:focus, textarea:focus { border-color: var(--purple); box-sha
   .profilehead { align-items: flex-start; }
   .profileactions { width: 100%; }
 }
+
+
+/* ===================== UI POLISH LAYER (post-MVP design pass) ===================== */
+
+/* --- ambience: soft purple glows + faint grid on the workspace canvas --- */
+[data-ws] body {
+  background:
+    radial-gradient(1000px 460px at 82% -8%, rgba(139, 92, 246, 0.07), transparent 62%),
+    radial-gradient(760px 420px at 4% 28%, rgba(99, 84, 214, 0.05), transparent 58%),
+    var(--ws-bg);
+}
+[data-theme='light'][data-ws] body {
+  background:
+    radial-gradient(1000px 460px at 82% -8%, rgba(124, 58, 237, 0.06), transparent 62%),
+    radial-gradient(760px 420px at 4% 28%, rgba(124, 58, 237, 0.04), transparent 58%),
+    var(--ws-bg);
+}
+
+/* --- thin, quiet scrollbars --- */
+[data-ws] ::-webkit-scrollbar { width: 9px; height: 9px; }
+[data-ws] ::-webkit-scrollbar-track { background: transparent; }
+[data-ws] ::-webkit-scrollbar-thumb { background: #27304a; border-radius: 999px; border: 2px solid transparent; background-clip: padding-box; }
+[data-ws] ::-webkit-scrollbar-thumb:hover { background: #37436b; border: 2px solid transparent; background-clip: padding-box; }
+[data-theme='light'][data-ws] ::-webkit-scrollbar-thumb { background: #cdd5e4; border: 2px solid transparent; background-clip: padding-box; }
+[data-ws] .tablewrap { scrollbar-width: thin; scrollbar-color: #37436b transparent; }
+[data-ws] .wssidebar { scrollbar-width: thin; scrollbar-color: #2b3450 transparent; }
+
+/* --- headers: gradient page titles, softer eyebrow --- */
+.wstop h1 {
+  background: linear-gradient(96deg, var(--text) 55%, #b7a5ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+  width: fit-content;
+}
+[data-theme='light'][data-ws] .wstop h1 { background: linear-gradient(96deg, #172033 55%, #6d5bd8); -webkit-background-clip: text; background-clip: text; }
+.viewhead h2 {
+  background: linear-gradient(96deg, var(--text) 62%, #b7a5ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+  width: fit-content;
+}
+[data-theme='light'][data-ws] .viewhead h2 { background: linear-gradient(96deg, #172033 62%, #6d5bd8); -webkit-background-clip: text; background-clip: text; }
+
+/* --- KPI cards: lift on hover, gradient numerals, top hairline --- */
+.kpi { position: relative; overflow: hidden; transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.25s ease, box-shadow 0.25s ease; }
+.kpi::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(183, 165, 255, 0.5), transparent); opacity: 0.6; }
+.kpi:hover { transform: translateY(-2px); border-color: rgba(139, 92, 246, 0.45); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(139, 92, 246, 0.12); }
+a.kpi { cursor: pointer; }
+.num { background: linear-gradient(180deg, var(--text), #cfc3ff); -webkit-background-clip: text; background-clip: text; color: transparent !important; }
+[data-theme='light'][data-ws] .num { background: linear-gradient(180deg, #172033, #5b45b8); -webkit-background-clip: text; background-clip: text; }
+.kpi:hover .num { filter: brightness(1.06); }
+
+/* --- cards: radius + top sheen + hover --- */
+.card, .tablewrap { border-radius: 18px; position: relative; }
+.card::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(183, 165, 255, 0.28), transparent); pointer-events: none; }
+[data-ws] .card:hover, [data-ws] .tablewrap:hover { border-color: rgba(139, 92, 246, 0.28); }
+
+/* --- buttons: press state + focus ring + primary glow --- */
+[data-ws] .btn:active { transform: translateY(1px); }
+[data-ws] .btn.primary:hover { box-shadow: 0 10px 28px rgba(124, 58, 237, 0.42); }
+[data-ws] .btn .ico, [data-ws] button.sq { line-height: 1; }
+[data-ws] .btn:focus-visible, [data-ws] input:focus-visible, [data-ws] select:focus-visible, [data-ws] textarea:focus-visible { outline: 2px solid #a78bfa; outline-offset: 2px; }
+[data-ws] .btn.danger { border-color: rgba(251, 113, 133, 0.35); }
+[data-ws] .btn.danger:hover { background: rgba(251, 113, 133, 0.12); }
+[data-ws] .btn.sq { transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease, border-color 0.2s ease; }
+[data-ws] .btn.sq:hover { transform: translateY(-1px); }
+
+/* --- nav: refined active + icon tint --- */
+[data-ws] .nav a { font-size: 13.5px; font-weight: 650; }
+[data-ws] .nav a.active .ico { color: var(--purple); text-shadow: 0 0 12px rgba(139, 92, 246, 0.6); }
+[data-ws] .nav a:hover .ico { color: #d5c9ff; }
+[data-ws] .navgrouptoggle { border-radius: 8px; }
+[data-ws] .navgrouptoggle:focus-visible { outline: 2px solid #a78bfa; outline-offset: 1px; }
+[data-ws] .wsbrand { padding-bottom: 18px; }
+[data-ws] .status { margin-bottom: 4px; }
+
+/* --- tables: glass sticky header + hover accent --- */
+.table th { background: rgba(16, 20, 33, 0.85); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); font-size: 10px; }
+[data-theme='light'][data-ws] .table th { background: rgba(255, 255, 255, 0.85); }
+[data-ws] .table tbody tr { transition: background 0.15s ease, box-shadow 0.15s ease; }
+[data-ws] .table tbody tr:hover { background: rgba(139, 92, 246, 0.07); box-shadow: inset 2px 0 0 rgba(139, 92, 246, 0.55); }
+[data-theme='light'][data-ws] .table tbody tr:hover { background: rgba(99, 74, 205, 0.06); box-shadow: inset 2px 0 0 rgba(99, 74, 205, 0.45); }
+.tablewrap { box-shadow: var(--shadow); }
+
+/* --- pills: filled tints + more status aliases everywhere --- */
+.pill { backdrop-filter: blur(2px); }
+.pill.new { background: rgba(255, 138, 76, 0.09); }
+.pill.contacted { background: rgba(139, 92, 246, 0.12); }
+.pill.qualified { background: rgba(103, 232, 249, 0.1); }
+.pill.proposal_sent, .pill.invoice { background: rgba(168, 149, 255, 0.12); }
+.pill.won, .pill.received, .pill.paid, .pill.done, .pill.completed, .pill.delivered, .pill.in_progress, .pill.payment, .pill.active, .pill.approved, .pill.live, .pill.connected, .pill.approv { background: rgba(54, 211, 153, 0.1); }
+.pill.lost, .pill.overdue, .pill.blocked, .pill.high, .pill.rejected, .pill.failed, .pill.changes_requested { background: rgba(251, 113, 133, 0.1); }
+.pill.pending, .pill.planning, .pill.todo, .pill.review, .pill.medium, .pill.low { color: var(--muted); background: rgba(152, 163, 184, 0.08); }
+.pill.expense { background: rgba(255, 138, 76, 0.09); }
+.pill.submitted, .pill.under_review, .pill.duplicate { background: rgba(139, 92, 246, 0.12); color: var(--purple); border-color: rgba(139, 92, 246, 0.4); }
+
+/* --- progress: glow fills --- */
+.track { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04); }
+[data-theme='light'][data-ws] .track { box-shadow: inset 0 0 0 1px rgba(23, 32, 51, 0.06); }
+.fill { box-shadow: 0 0 12px rgba(139, 92, 246, 0.4); }
+.pipelinefill { box-shadow: 0 0 12px rgba(139, 92, 246, 0.35); }
+
+/* --- inputs: lifted bg with placeholder tone --- */
+[data-ws] input, [data-ws] select { background: linear-gradient(180deg, var(--input-bg), #0a0e19); }
+[data-theme='light'][data-ws] input, [data-theme='light'][data-ws] select { background: var(--input-bg); }
+[data-ws] input::placeholder, [data-ws] textarea::placeholder { color: #5b6577; }
+[data-theme='light'][data-ws] input::placeholder, [data-theme='light'][data-ws] textarea::placeholder { color: #8b95a8; }
+
+/* --- modals: blur + pop-in --- */
+.modalbg { backdrop-filter: blur(10px) saturate(1.1); -webkit-backdrop-filter: blur(10px) saturate(1.1); animation: modalIn 0.18s ease; }
+@keyframes modalIn { from { opacity: 0; } to { opacity: 1; } }
+.modal { animation: modalPop 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(139, 92, 246, 0.14); }
+@keyframes modalPop { from { opacity: 0; transform: translateY(10px) scale(0.97); } to { opacity: 1; transform: none; } }
+
+/* --- toasts: accent bar --- */
+.toast-item { border-left: 3px solid #8b5cf6; }
+[data-ws] .toast-item { animation: toastin 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.15); }
+.toast-item.err { border-left-color: var(--red); }
+
+/* --- empty states feel intentional, not broken --- */
+[data-ws] .empty { letter-spacing: 0.1px; opacity: 0.85; }
+
+/* --- chart bars: hover pop + softer caps --- */
+[data-ws] .bar:hover { filter: brightness(1.12); }
+.bar { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12); }
+.bar.red { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08); }
+
+/* --- topbar: cleaner tools row --- */
+[data-ws] .ws-search { transition: border-color 0.2s ease, box-shadow 0.2s ease; }
+[data-ws] .ws-search:focus-within { border-color: rgba(139, 92, 245, 0.55); box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15); }
+[data-ws] .profilepill { gap: 7px; font-size: 11.5px; }
+[data-ws] .profilepill:hover { transform: translateY(-1px); }
+[data-ws] .wstop h1 { font-size: clamp(23px, 3vw, 31px); letter-spacing: -0.035em; }
+
+/* --- remove duplicate burger: the sidebar toggle is the labeled one --- */
+[data-ws] .ws-burger { display: none !important; }
+
+/* --- sidebar width follows content density a touch better --- */
+[data-ws] .wssidebar { padding: 22px 14px; }
+[data-ws] .navgroupitems { padding-left: 2px; }
+
+/* --- deadline/task rows: hover affordance --- */
+[data-ws] .deadline:hover, [data-ws] .taskrow:hover { border-color: rgba(139, 92, 246, 0.3); transform: translateY(-1px); }
+.deadline, .taskrow { transition: transform 0.2s ease, border-color 0.2s ease; }
+
+/* --- calendar: today glow --- */
+.cal-day.today { background: linear-gradient(180deg, rgba(139, 92, 246, 0.09), var(--card2)); }
+
+/* --- fix: keep muted <small> readable inside gradient .num --- */
+[data-ws] .num small { -webkit-text-fill-color: var(--muted); color: var(--muted); background: none !important; }
+[data-theme='light'][data-ws] .num small { -webkit-text-fill-color: #59657b; }
