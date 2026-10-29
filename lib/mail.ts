@@ -107,3 +107,34 @@ function escapeHtml(s: string) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
+
+type BrandedArgs = {
+  to: string;
+  headingName: string;
+  introName: string;
+  eyebrow: string;
+  message: string;
+  body: string | null;
+  ctaLabel: string;
+  ctaPath: string;
+  footer: string;
+};
+
+/** One flexible branded email used by all event notifiers. Never throws. */
+export async function notifyBranded(a: BrandedArgs): Promise<{ ok: boolean; error?: string }> {
+  const appUrl = process.env.APP_URL || process.env.NEXTAUTH_URL || 'https://corble.vercel.app';
+  const subject = a.message.replace(/<[^>]*>/g, '').slice(0, 90);
+  const html = `
+  <div style="font-family:Inter,system-ui,sans-serif;max-width:560px;margin:0 auto;padding:24px;background:#0a0c10;color:#f2f5f9;border-radius:12px">
+    <p style="color:#c8ff00;font-size:12px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;margin:0 0 12px">${a.eyebrow}</p>
+    <h1 style="font-size:22px;margin:0 0 8px;letter-spacing:-0.03em">Hi ${escapeHtml(a.headingName)},</h1>
+    <p style="color:#9aa4b2;margin:0 0 20px">${a.introName}</p>
+    <div style="background:#12171f;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:16px 18px;margin-bottom:20px">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700">${escapeHtml(a.message)}</p>
+      ${a.body ? `<p style="margin:0;color:#9aa4b2;font-size:13px">${escapeHtml(a.body)}</p>` : ''}
+    </div>
+    <a href="${appUrl}${a.ctaPath}" style="display:inline-block;background:#c8ff00;color:#0a0c10;font-weight:700;text-decoration:none;padding:12px 18px;border-radius:10px">${a.ctaLabel}</a>
+    <p style="color:#818d9c;font-size:12px;margin-top:28px">${escapeHtml(a.footer)}</p>
+  </div>`;
+  return sendEmail({ to: a.to, subject, html, text: `${a.message}\n\n${a.body ?? ''}\n\n${appUrl}${a.ctaPath}` });
+}

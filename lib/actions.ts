@@ -48,7 +48,7 @@ import {
   finalDeliverySchema,
   acceptDeliverySchema,
 } from '@/lib/validators';
-import { notifyTaskAssigned } from '@/lib/mail';
+import { notifyTaskAssigned, notifyBranded } from '@/lib/mail';
 
 export type ActionResult = { ok: boolean; error?: string; message?: string };
 
@@ -82,6 +82,32 @@ function fail(e: unknown): ActionResult {
 function okRes(message: string): ActionResult {
   return { ok: true, message };
 }
+
+type BrandedMail = Parameters<typeof notifyBranded>[0];
+/** Fire-and-forget branded email; never let mail failures bubble into actions. */
+async function sendBrandedMail(a: BrandedMail) {
+  try {
+    const r = await notifyBranded(a);
+    if (!r?.ok) console.warn('[mail] event email skipped:', r?.error ?? 'unknown');
+  } catch (e) {
+    console.error('[mail] event email crashed:', e);
+  }
+}
+/** Look up a user's email/name then send the branded mail (no-op when unconfigured). */
+async function mailUser(
+  userId: string | null | undefined,
+  build: (p: { email: string; name: string }) => Omit<BrandedMail, 'to' | 'headingName'>
+) {
+  if (!userId) return;
+  const usr = await db.user.findUnique({ where: { id: userId }, select: { email: true, name: true } });
+  if (!usr?.email) return;
+  await sendBrandedMail({
+    ...build({ email: usr.email, name: usr.name }),
+    to: usr.email,
+    headingName: usr.name,
+  });
+}
+const FOOTER = 'You are receiving this because of activity on your assigned work in Corble Workspace.';
 
 async function notifyAssigneeIfAny(
   assigneeId: string | null | undefined,
@@ -367,8 +393,23 @@ export async function updateTask(raw: unknown): Promise<ActionResult> {
     });
     if (before && before.assigneeId !== t.assigneeId && t.assigneeId) {
       await notify(t.assigneeId, 'TASK_REASSIGNED', `A task is now yours: "${t.title}"`, undefined, '/workspace/tasks');
-      const pending = await db.handoverRequest.updateMany({ where: { taskId: id, status: 'PENDING' }, data: { status: 'REJECTED', decidedById: u.id, decidedAt: new Date() } });
-      if (pending.count > 0) await notify(t.assigneeId!, 'HANDOVER_CANCELLED', `Pending handover requests on "${t.title}" were closed automatically`, 'Task was reassigned during the update.', '/workspace/tasks');
+      const penders = await db.handoverRequest.findMany({ where: { taskId: id, status: 'PENDING' }, select: { requesterId: true } });
+      await db.handoverRequest.updateMany({ where: { taskId: id, status: 'PENDING' }, data: { status: 'REJECTED', decidedById: u.id, decidedAt: new Date() } });
+      if (penders.length > 0) {
+        await notify(t.assigneeId!, 'HANDOVER_CANCELLED', `Pending handover requests on "${t.title}" were closed automatically`, 'Task was reassigned during the update.', '/workspace/tasks');
+        for (const r of penders) {
+          if (r.requesterId === u.id) continue;
+          await mailUser(r.requesterId, ({ name }) => ({
+            eyebrow: 'Corble · Handover closed',
+            introName: `a request of yours on a task was automatically closed.`,
+            message: `Handover requests on "${t.title}" were closed`,
+            body: 'The task was reassigned during an update, so pending requests were resolved as rejected.',
+            ctaLabel: 'Open tasks →',
+            ctaPath: '/workspace/tasks/team',
+            footer: FOOTER,
+          }));
+        }
+      }
     }
     await logActivity(u.id, 'Task updated', t.title);
     if (input.assigneeId && input.assigneeId !== prev?.assigneeId) {
@@ -766,12 +807,28 @@ export async function completeTask(raw: unknown): Promise<ActionResult> {
       data: { status: 'DONE', completedAt: new Date() },
     });
     // Resolve any pending handover requests safely.
-    const pending = await db.handoverRequest.updateMany({
+    const penders = await db.handoverRequest.findMany({
+      where: { taskId: task.id, status: 'PENDING' },
+      select: { requesterId: true },
+    });
+    await db.handoverRequest.updateMany({
       where: { taskId: task.id, status: 'PENDING' },
       data: { status: 'REJECTED', decidedById: u.id, decidedAt: new Date() },
     });
-    if (pending.count > 0 && task.assigneeId) {
+    if (penders.length > 0 && task.assigneeId) {
       await notify(task.assigneeId, 'HANDOVER_REJECTED', `Pending handover requests on "${task.title}" were closed`, 'The task was completed.', '/workspace/tasks');
+      for (const r of penders) {
+        if (r.requesterId === u.id) continue;
+        await mailUser(r.requesterId, () => ({
+          eyebrow: 'Corble · Handover closed',
+          introName: 'a task you wanted to take over has been completed.',
+          message: `Requests on "${task.title}" were closed`,
+          body: 'The task was marked DONE, so the pending handover requests were resolved as rejected.',
+          ctaLabel: 'Open tasks →',
+          ctaPath: '/workspace/tasks/team',
+          footer: FOOTER,
+        }));
+      }
     }
     await logActivity(u.id, 'Task completed', task.title);
     revalidatePath('/workspace/tasks');
@@ -793,7 +850,18 @@ export async function addTaskComment(raw: unknown): Promise<ActionResult> {
     }
     await db.taskComment.create({ data: { taskId: task.id, userId: u.id, body: input.body } });
     const watchers = [task.createdById, task.originalOwnerId].filter((id): id is string => id !== null && id !== u.id);
-    for (const w of watchers) await notify(w, 'TASK_COMMENT', `New comment on "${task.title}"`, input.body.slice(0, 120), '/workspace/tasks');
+    for (const w of watchers) {
+      await notify(w, 'TASK_COMMENT', `New comment on "${task.title}"`, input.body.slice(0, 120), '/workspace/tasks');
+      await mailUser(w, () => ({
+        eyebrow: 'Corble · Task comment',
+        introName: `new comment on one of your tasks.`,
+        message: `New comment on "${task.title}"`,
+        body: input.body.slice(0, 300),
+        ctaLabel: 'Open tasks →',
+        ctaPath: '/workspace/tasks',
+        footer: FOOTER,
+      }));
+    }
     revalidatePath('/workspace/tasks');
     return okRes('Comment added.');
   } catch (e) {
@@ -843,6 +911,21 @@ export async function requestHandover(raw: unknown): Promise<ActionResult> {
       return created;
     });
     if (!result) return { ok: false, error: 'Task is not available for handover.' };
+    const created = await db.handoverRequest.findUnique({
+      where: { id: result.id },
+      select: { ownerId: true, task: { select: { title: true } } },
+    });
+    if (created?.task.title) {
+      await mailUser(created.ownerId, () => ({
+        eyebrow: 'Corble · Handover request',
+        introName: 'a team member wants to take over one of your tasks.',
+        message: `${u.name} requested to take over "${created.task.title}"`,
+        body: input.note ?? null,
+        ctaLabel: 'Review request →',
+        ctaPath: '/workspace/tasks/team',
+        footer: FOOTER,
+      }));
+    }
     revalidatePath('/workspace/tasks/team');
     revalidatePath('/workspace/tasks');
     return okRes('Handover request sent to the current owner.');
@@ -927,6 +1010,58 @@ export async function decideHandover(raw: unknown): Promise<ActionResult> {
     if (result.kind === 'resolved' || result.kind === 'stale') {
       return { ok: true, message: result.message };
     }
+    if (result.kind === 'done') {
+      // Email the affected parties based on the final state of the request.
+      const fresh = await db.handoverRequest.findUnique({
+        where: { id: input.requestId },
+        select: { status: true, ownerId: true, requesterId: true, task: { select: { title: true } } },
+      });
+      if (fresh?.task.title) {
+        const title = fresh.task.title;
+        if (fresh.status === 'CANCELLED') {
+          await mailUser(fresh.ownerId, ({ name }) => ({
+            eyebrow: 'Corble · Handover request',
+            introName: `a handover request on your task was withdrawn by the requester.`,
+            message: `${u.name} withdrew their handover request on "${title}"`,
+            body: null,
+            ctaLabel: 'Open tasks →',
+            ctaPath: '/workspace/tasks',
+            footer: FOOTER,
+          }));
+        } else if (fresh.status === 'APPROVED') {
+          await Promise.all([
+            mailUser(fresh.ownerId, () => ({
+              eyebrow: 'Corble · Handover approved',
+              introName: 'a handover request on your task was approved.',
+              message: `Handover approved: "${title}" is now assigned to ${fresh.requesterId}`,
+              body: 'The task was transferred. Your original ownership stays recorded in task history.',
+              ctaLabel: 'Open team tasks →',
+              ctaPath: '/workspace/tasks/team',
+              footer: FOOTER,
+            })),
+            mailUser(fresh.requesterId, () => ({
+              eyebrow: 'Corble · Handover approved',
+              introName: 'your handover request was approved — the task is yours now.',
+              message: `"${title}" is now yours`,
+              body: 'You took over this task. Its original owner remains recorded.',
+              ctaLabel: 'Open my tasks →',
+              ctaPath: '/workspace/tasks',
+              footer: FOOTER,
+            })),
+          ]);
+        } else if (fresh.status === 'REJECTED') {
+          await mailUser(fresh.requesterId, () => ({
+            eyebrow: 'Corble · Handover declined',
+            introName: 'your handover request was declined by the task owner.',
+            message: `Your handover request on "${title}" was declined`,
+            body: null,
+            ctaLabel: 'Open team tasks →',
+            ctaPath: '/workspace/tasks/team',
+            footer: FOOTER,
+          }));
+        }
+      }
+    }
     revalidatePath('/workspace/tasks/team');
     revalidatePath('/workspace/tasks');
     revalidatePath('/workspace/notifications');
@@ -971,9 +1106,29 @@ export async function submitDeliverable(raw: unknown): Promise<ActionResult> {
     });
     if (task.createdById && task.createdById !== u.id) {
       await notify(task.createdById, 'DELIVERABLE_SUBMITTED', `Deliverable submitted for "${task.title}"`, input.title, '/workspace/deliverables');
+      await mailUser(task.createdById, () => ({
+        eyebrow: 'Corble · Deliverable review',
+        introName: 'a deliverable was submitted and is waiting for your review.',
+        message: `Deliverable submitted for "${task.title}"`,
+        body: `${input.title}${input.externalUrl ? ` — Link: ${input.externalUrl}` : ''}`,
+        ctaLabel: 'Review deliverables →',
+        ctaPath: '/workspace/deliverables',
+        footer: FOOTER,
+      }));
     } else if (task.projectId) {
       const admin = await db.user.findFirst({ where: { role: 'ADMIN', isActive: true } });
-      if (admin) await notify(admin.id, 'DELIVERABLE_SUBMITTED', `Deliverable submitted for "${task.title}"`, input.title, '/workspace/deliverables');
+      if (admin && admin.id !== u.id) {
+        await notify(admin.id, 'DELIVERABLE_SUBMITTED', `Deliverable submitted for "${task.title}"`, input.title, '/workspace/deliverables');
+        await mailUser(admin.id, () => ({
+          eyebrow: 'Corble · Deliverable review',
+          introName: 'a deliverable was submitted and is waiting for your review.',
+          message: `Deliverable submitted for "${task.title}"`,
+          body: `${input.title}${input.externalUrl ? ` — Link: ${input.externalUrl}` : ''}`,
+          ctaLabel: 'Review deliverables →',
+          ctaPath: '/workspace/deliverables',
+          footer: FOOTER,
+        }));
+      }
     }
     await logActivity(u.id, 'Deliverable submitted', `${input.title} (${task.title})`);
     revalidatePath('/workspace/deliverables');
@@ -1048,10 +1203,19 @@ export async function reviewDeliverable(raw: unknown): Promise<ActionResult> {
       await notify(
         version.deliverable.createdById,
         input.decision === 'APPROVED' ? 'DELIVERABLE_APPROVED' : 'DELIVERABLE_CHANGES',
-        `Review result: ${input.decision.replace('_', ' ').toLowerCase()} ï¿½ ${version.deliverable.title}`,
+        `Review result: ${input.decision.replace('_', ' ').toLowerCase()} — ${version.deliverable.title}`,
         input.comment,
         '/workspace/deliverables'
       );
+      await mailUser(version.deliverable.createdById, () => ({
+        eyebrow: 'Corble · Deliverable review',
+        introName: 'your submitted work was reviewed.',
+        message: `${version.deliverable.title} v${version.version}: ${input.decision.replace('_', ' ').toLowerCase()}`,
+        body: input.comment,
+        ctaLabel: 'Open deliverables →',
+        ctaPath: '/workspace/deliverables',
+        footer: FOOTER,
+      }));
     }
     revalidatePath('/workspace/deliverables');
     return okRes('Review recorded.');
@@ -1367,6 +1531,17 @@ export async function submitPhase(raw: unknown): Promise<ActionResult> {
     });
     if (reviewerAdmin) {
       await notify(reviewerAdmin.id, 'PHASE_SUBMITTED', `Phase "${phase.title}" v${version} submitted for review`, input.notes.slice(0, 160), `/workspace/automation/${phase.projectId}`);
+      if (reviewerAdmin.id !== u.id) {
+        await mailUser(reviewerAdmin.id, () => ({
+          eyebrow: 'Corble · Automation phase',
+          introName: 'a phase was submitted for your review.',
+          message: `Phase "${phase.title}" v${version} submitted for review`,
+          body: input.notes.slice(0, 300),
+          ctaLabel: 'Review phase →',
+          ctaPath: `/workspace/automation/${phase.projectId}`,
+          footer: FOOTER,
+        }));
+      }
     }
     await logActivity(u.id, 'Phase submitted for review', `${phase.title} v${version}`);
     revalidatePath(`/workspace/automation/${phase.projectId}`);
@@ -1403,6 +1578,17 @@ export async function reviewPhase(raw: unknown): Promise<ActionResult> {
     });
     if (submission.authorId) {
       await db.notification.create({ data: { userId: submission.authorId, type: 'PHASE_REVIEWED', title: `Phase "${submission.phase.title}" v${submission.version}: ${approved ? 'approved' : 'changes requested'}`, body: input.comment ?? null, link: `/workspace/automation/${submission.phase.projectId}` } });
+      if (submission.authorId !== u.id) {
+        await mailUser(submission.authorId, () => ({
+          eyebrow: 'Corble · Automation phase',
+          introName: 'a phase submission you authored was reviewed.',
+          message: `Phase "${submission.phase.title}" v${submission.version}: ${approved ? 'approved' : 'changes requested'}`,
+          body: input.comment ?? null,
+          ctaLabel: 'Open automation →',
+          ctaPath: `/workspace/automation/${submission.phase.projectId}`,
+          footer: FOOTER,
+        }));
+      }
     }
     await logActivity(u.id, approved ? 'Phase approved' : 'Phase changes requested', `${submission.phase.title} v${submission.version}`);
     revalidatePath(`/workspace/automation/${submission.phase.projectId}`);
@@ -1446,7 +1632,16 @@ export async function assembleDelivery(raw: unknown): Promise<ActionResult> {
       },
     });
     if (project.deliveryAcceptedById !== u.id && project.ownerId && project.ownerId !== u.id) {
-      await db.notification.create({ data: { userId: project.ownerId, type: 'DELIVERY_PENDING', title: `Final delivery assembled for "${project.name}" ï¿½ awaiting acceptance`, link: `/workspace/automation/${project.id}` } });
+      await db.notification.create({ data: { userId: project.ownerId, type: 'DELIVERY_PENDING', title: `Final delivery assembled for "${project.name}" — awaiting acceptance`, link: `/workspace/automation/${project.id}` } });
+      await mailUser(project.ownerId, () => ({
+        eyebrow: 'Corble · Delivery ready',
+        introName: 'the final delivery of an automation project was assembled.',
+        message: `Final delivery assembled for "${project.name}" — awaiting acceptance`,
+        body: `${approvedCount}/${requiredCount} phases approved${input.websiteUrl ? ` · Website: ${input.websiteUrl}` : ''}${input.repoUrl ? ` · Repo: ${input.repoUrl}` : ''}${input.notes ? ` · ${input.notes}` : ''}`,
+        ctaLabel: 'Review delivery →',
+        ctaPath: `/workspace/automation/${project.id}`,
+        footer: FOOTER,
+      }));
     }
     await logActivity(u.id, 'Final delivery assembled', project.name);
     revalidatePath(`/workspace/automation/${project.id}`);
