@@ -142,7 +142,10 @@ export default function Topbar({ pathname, user, companyName, currency, onToggle
         </Link>
         <button
           className="btn sq"
-          onClick={() => signOut({ callbackUrl: '/login' })}
+          onClick={async () => {
+            await signOut({ redirect: false });
+            window.location.assign('/login');
+          }}
           aria-label="Sign out"
           title="Sign out"
         >
