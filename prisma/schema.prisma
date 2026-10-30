@@ -599,6 +599,7 @@ model GitHubConnection {
   updatedAt     DateTime  @updatedAt
 
   @@unique([projectId])
+  @@unique([repoId])
   @@index([owner, repo])
 }
 

@@ -10,6 +10,7 @@ export default async function VercelPage() {
   const role = (session?.user?.role ?? 'MEMBER') as string;
 
   const projects = await db.project.findMany({
+    where: { githubConnections: { some: {} } },
     orderBy: { name: 'asc' },
     include: {
       deploymentConn: { select: { vercelProjectId: true, vercelTeamId: true } },
@@ -88,7 +89,7 @@ export default async function VercelPage() {
         <div>
           <h2>Deployments (Vercel)</h2>
           <div className="sub">
-            {projects.length} sites · GitHub connections automatically create preview deployments; production deploys remain manual
+            {projects.length} GitHub-connected sites · preview deployments are automatic; production deploys remain manual
           </div>
         </div>
       </div>

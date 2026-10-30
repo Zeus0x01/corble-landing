@@ -2044,7 +2044,10 @@ export async function connectGithub(raw: unknown): Promise<ActionResult> {
     const check = await repoExists(input.owner, input.repo);
     if (!check.ok) return { ok: false, error: `GitHub says no access to ${input.owner}/${input.repo} (status ${check.status ?? 'unknown'}). Check GITHUB_TOKEN and repo casing.` };
     const alreadyConnected = await db.gitHubConnection.findFirst({
-      where: { owner: input.owner, repo: input.repo, ...(input.projectId ? { NOT: { projectId: input.projectId } } : {}) },
+      where: {
+        OR: [{ repoId: String(check.id) }, { owner: input.owner, repo: input.repo }],
+        ...(input.projectId ? { NOT: { projectId: input.projectId } } : {}),
+      },
       select: { project: { select: { name: true } } },
     });
     if (alreadyConnected) return { ok: false, error: `This repository is already connected${alreadyConnected.project?.name ? ` to "${alreadyConnected.project.name}"` : ''}.` };
@@ -2164,6 +2167,7 @@ export async function disconnectGithub(raw: unknown): Promise<ActionResult> {
     await db.$transaction([
       db.gitHubConnection.deleteMany({ where: { OR: [{ id }, ...(target.projectId ? [{ projectId: target.projectId }] : [])] } }),
       db.deploymentConnection.deleteMany({ where: { projectId } }),
+      db.deploymentRecord.deleteMany({ where: { projectId } }),
     ]);
     await logActivity(u.id, 'GitHub repo disconnected', `${target.owner}/${target.repo}`);
     revalidatePath('/workspace/github');
@@ -2179,6 +2183,8 @@ export async function configureDeploy(raw: unknown): Promise<ActionResult> {
     const u = await requireUser();
     const input = deployConfigSchema.parse(raw);
     if (u.role !== 'ADMIN') return { ok: false, error: 'Only admins can configure Vercel.' };
+    const github = await db.gitHubConnection.findUnique({ where: { projectId: input.projectId }, select: { id: true } });
+    if (!github) return { ok: false, error: 'Connect this project through the GitHub tab before configuring deployment.' };
     await db.deploymentConnection.upsert({
       where: { projectId: input.projectId },
       create: { projectId: input.projectId, vercelProjectId: input.vercelProjectId, vercelTeamId: input.vercelTeamId ?? null },
