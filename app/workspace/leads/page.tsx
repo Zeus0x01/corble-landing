@@ -5,6 +5,7 @@ import InlineSelect from '@/components/InlineSelect';
 import ConfirmAction from '@/components/ConfirmAction';
 import ModalForm from '@/components/ModalForm';
 import DataTable, { type DtRow } from '@/components/DataTable';
+import LeadCsvImport from './LeadCsvImport';
 import type { FieldSpec } from '@/lib/validators';
 
 export const dynamic = 'force-dynamic';
@@ -103,12 +104,15 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
           <h2>Leads pipeline</h2>
           <div className="sub">Add, edit, schedule follow-ups; convert a Won lead into a real project.</div>
         </div>
-        <ModalForm
-          title="Add lead"
-          trigger="＋ Add lead"
-          action={createLead}
-          fields={leadFields(owners).filter((f) => f.name !== 'id')}
-        />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <LeadCsvImport />
+          <ModalForm
+            title="Add lead"
+            trigger="＋ Add lead"
+            action={createLead}
+            fields={leadFields(owners).filter((f) => f.name !== 'id')}
+          />
+        </div>
       </div>
 
       <DataTable

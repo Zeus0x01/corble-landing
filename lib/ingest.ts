@@ -96,36 +96,81 @@ export interface CsvLead {
   industry: string | null;
   location: string | null;
   notes: string | null;
+  value: string | null;
   error?: string;
 }
+
+const normHeader = (h: string) => h.trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+
+const CSV_ALIASES: Record<keyof Omit<CsvLead, 'error'>, string[]> = {
+  company: ['company', 'company name', 'name', 'business', 'business name', 'organization', 'organisation'],
+  contactPerson: ['contact person', 'contact', 'contact name', 'person', 'owner'],
+  email: ['email', 'e mail', 'mail', 'email address', 'email1'],
+  phone: ['phone', 'tel', 'telephone', 'mobile', 'phone number', 'whatsapp'],
+  website: ['website', 'url', 'site', 'link', 'homepage', 'site url'],
+  domain: ['domain', 'website domain', 'host'],
+  industry: ['industry', 'category', 'sector', 'business type', 'type', 'categories'],
+  location: ['location', 'city', 'address', 'country', 'state', 'region'],
+  notes: ['notes', 'note', 'description', 'summary', 'comment'],
+  value: ['value', 'est value', 'estimated value', 'budget', 'price', 'potential value'],
+};
 
 export function parseCsv(csv: string): { rows: CsvLead[]; invalid: CsvLead[] } {
   const lines = csv.trim().split(/\r?\n/).filter((l) => l.trim().length > 0);
   if (lines.length < 2) return { rows: [], invalid: [] };
-  const headers = splitCsvLine(lines[0]).map((h) => h.trim().toLowerCase());
-  const idx = (name: string) => headers.findIndex((h) => h === name || h.startsWith(name));
+  const headers = splitCsvLine(lines[0]).map(normHeader);
+  const fieldsOrder = Object.keys(CSV_ALIASES) as (keyof Omit<CsvLead, 'error'>)[];
+  const colFor = new Map<keyof Omit<CsvLead, 'error'>, number>();
+  const used = new Set<number>();
+  for (const f of fieldsOrder) {
+    const j = headers.findIndex((h) => CSV_ALIASES[f].includes(h));
+    if (j >= 0 && !used.has(j)) {
+      colFor.set(f, j);
+      used.add(j);
+    }
+  }
+  for (const f of fieldsOrder) {
+    if (colFor.has(f)) continue;
+    const j = headers.findIndex((h, i) => !used.has(i) && CSV_ALIASES[f].some((a) => h.startsWith(`${a} `) || (h !== a && h.replace(/\s*\d+$/, '') === a)));
+    if (j >= 0) {
+      colFor.set(f, j);
+      used.add(j);
+    }
+  }
+  const cols = (f: keyof Omit<CsvLead, 'error'>) => colFor.get(f) ?? -1;
   const rows: CsvLead[] = [];
   const invalid: CsvLead[] = [];
   for (let i = 1; i < lines.length && i <= 5000; i++) {
     const cells = splitCsvLine(lines[i]);
-    const get = (name: string) => {
-      const j = idx(name);
-      const v = j >= 0 ? (cells[j] ?? '').trim() : '';
+    const get = (col: number) => {
+      const v = col >= 0 ? (cells[col] ?? '').trim() : '';
       return v || null;
     };
     const row: CsvLead = {
-      company: get('company') ?? '',
-      contactPerson: get('contact person') ?? get('contact'),
-      email: get('email'),
-      phone: get('phone'),
-      website: get('website'),
-      domain: get('domain'),
-      industry: get('industry'),
-      location: get('location'),
-      notes: get('notes'),
+      company: get(cols('company')) ?? '',
+      contactPerson: get(cols('contactPerson')),
+      email: get(cols('email')),
+      phone: get(cols('phone')),
+      website: get(cols('website')),
+      domain: get(cols('domain')),
+      industry: get(cols('industry')),
+      location: get(cols('location')),
+      notes: get(cols('notes')),
+      value: get(cols('value')),
     };
-    if (!row.company || !/[@.]/.test(`${row.email ?? ''}${row.website ?? ''}${row.phone ?? ''}`)) {
-      invalid.push({ ...row, error: !row.company ? 'Missing company' : 'No email / phone / website' });
+    const emailOk = Boolean(row.email && row.email.includes('@'));
+    const phoneOk = Boolean(row.phone && row.phone.replace(/\D/g, '').length >= 7);
+    const webOk = Boolean(row.website && /\./.test(row.website));
+    const domainOk = Boolean(row.domain && /\./.test(row.domain));
+    if (!row.company) {
+      invalid.push({ ...row, error: 'Missing company' });
+    } else if (!emailOk && !phoneOk && !webOk && !domainOk) {
+      invalid.push({
+        ...row,
+        error: [cols('email'), cols('phone'), cols('website'), cols('domain')].some((c) => c >= 0)
+          ? 'No usable email / phone / website value'
+          : 'No email / phone / website column found in header',
+      });
     } else {
       rows.push(row);
     }

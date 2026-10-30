@@ -38,6 +38,7 @@ import {
   taskEligibilitySchema,
   taskCommentSchema,
   deliverableSchema,
+  deliverableVersionSchema,
   deliverableReviewSchema,
   researchUpdateSchema,
   verifyActionSchema,
@@ -1090,19 +1091,39 @@ export async function submitDeliverable(raw: unknown): Promise<ActionResult> {
   try {
     const u = await requireUser();
     const input = deliverableSchema.parse(raw);
-    const task = await db.task.findUnique({
-      where: { id: input.taskId },
-      select: { id: true, title: true, assigneeId: true, createdById: true, projectId: true },
-    });
-    if (!task) return { ok: false, error: 'Task not found.' };
-    if (u.id !== task.assigneeId && u.id !== task.createdById && u.role !== 'ADMIN') {
-      return { ok: false, error: 'Only the assignee (or creator) can submit work for this task.' };
+
+    let attachTask: { id: string; title: string; assigneeId: string | null; createdById: string | null; projectId: string | null } | null = null;
+    let attachPhase: { id: string; title: string; ownerId: string | null; project: { id: string; ownerId: string | null; name: string } } | null = null;
+    if (input.taskId) {
+      const task = await db.task.findUnique({
+        where: { id: input.taskId },
+        select: { id: true, title: true, assigneeId: true, createdById: true, projectId: true },
+      });
+      if (!task) return { ok: false, error: 'Task not found.' };
+      if (u.id !== task.assigneeId && u.id !== task.createdById && u.role !== 'ADMIN') {
+        return { ok: false, error: 'Only the assignee (or creator) can submit work for this task.' };
+      }
+      attachTask = task;
+    } else if (input.phaseId) {
+      const phase = await db.automationPhase.findUnique({
+        where: { id: input.phaseId },
+        select: { id: true, title: true, ownerId: true, project: { select: { id: true, ownerId: true, name: true } } },
+      });
+      if (!phase) return { ok: false, error: 'Automation phase not found.' };
+      if (u.id !== phase.ownerId && u.id !== phase.project.ownerId && u.role !== 'ADMIN') {
+        return { ok: false, error: 'Only the phase owner (or project owner) can submit work for this phase.' };
+      }
+      attachPhase = phase;
+    } else {
+      return { ok: false, error: 'Attach the deliverable to a task or an automation phase.' };
     }
+
     const deliverable = await db.deliverable.create({
       data: {
         title: input.title,
-        taskId: task.id,
-        projectId: task.projectId,
+        taskId: attachTask?.id ?? null,
+        projectId: attachTask?.projectId ?? null,
+        phaseId: attachPhase?.id ?? null,
         status: 'UNDER_REVIEW',
         createdById: u.id,
         versions: {
@@ -1117,33 +1138,50 @@ export async function submitDeliverable(raw: unknown): Promise<ActionResult> {
         },
       },
     });
-    if (task.createdById && task.createdById !== u.id) {
-      await notify(task.createdById, 'DELIVERABLE_SUBMITTED', `Deliverable submitted for "${task.title}"`, input.title, '/workspace/deliverables');
-      await mailUser(task.createdById, () => ({
-        eyebrow: 'Corble · Deliverable review',
-        introName: 'a deliverable was submitted and is waiting for your review.',
-        message: `Deliverable submitted for "${task.title}"`,
-        body: `${input.title}${input.externalUrl ? ` — Link: ${input.externalUrl}` : ''}`,
-        ctaLabel: 'Review deliverables →',
-        ctaPath: '/workspace/deliverables',
-        footer: FOOTER,
-      }));
-    } else if (task.projectId) {
-      const admin = await db.user.findFirst({ where: { role: 'ADMIN', isActive: true } });
-      if (admin && admin.id !== u.id) {
-        await notify(admin.id, 'DELIVERABLE_SUBMITTED', `Deliverable submitted for "${task.title}"`, input.title, '/workspace/deliverables');
-        await mailUser(admin.id, () => ({
+    if (attachTask) {
+      if (attachTask.createdById && attachTask.createdById !== u.id) {
+        await notify(attachTask.createdById, 'DELIVERABLE_SUBMITTED', `Deliverable submitted for "${attachTask.title}"`, input.title, '/workspace/deliverables');
+        await mailUser(attachTask.createdById, () => ({
           eyebrow: 'Corble · Deliverable review',
           introName: 'a deliverable was submitted and is waiting for your review.',
-          message: `Deliverable submitted for "${task.title}"`,
+          message: `Deliverable submitted for "${attachTask.title}"`,
           body: `${input.title}${input.externalUrl ? ` — Link: ${input.externalUrl}` : ''}`,
+          ctaLabel: 'Review deliverables →',
+          ctaPath: '/workspace/deliverables',
+          footer: FOOTER,
+        }));
+      } else if (attachTask.projectId) {
+        const admin = await db.user.findFirst({ where: { role: 'ADMIN', isActive: true } });
+        if (admin && admin.id !== u.id) {
+          await notify(admin.id, 'DELIVERABLE_SUBMITTED', `Deliverable submitted for "${attachTask.title}"`, input.title, '/workspace/deliverables');
+          await mailUser(admin.id, () => ({
+            eyebrow: 'Corble · Deliverable review',
+            introName: 'a deliverable was submitted and is waiting for your review.',
+            message: `Deliverable submitted for "${attachTask.title}"`,
+            body: `${input.title}${input.externalUrl ? ` — Link: ${input.externalUrl}` : ''}`,
+            ctaLabel: 'Review deliverables →',
+            ctaPath: '/workspace/deliverables',
+            footer: FOOTER,
+          }));
+        }
+      }
+    }
+    if (attachPhase) {
+      const reviewerId = attachPhase.ownerId ?? attachPhase.project.ownerId;
+      if (reviewerId && reviewerId !== u.id) {
+        await notify(reviewerId, 'DELIVERABLE_SUBMITTED', `Deliverable submitted for phase "${attachPhase.title}"`, input.title, `/workspace/automation/${attachPhase.project.id}`);
+        await mailUser(reviewerId, () => ({
+          eyebrow: 'Corble · Deliverable review',
+          introName: 'a deliverable was submitted for an automation phase and is waiting for your review.',
+          message: `Deliverable submitted for phase "${attachPhase.title}"`,
+          body: `${input.title} — ${attachPhase.project.name}${input.externalUrl ? ` — Link: ${input.externalUrl}` : ''}`,
           ctaLabel: 'Review deliverables →',
           ctaPath: '/workspace/deliverables',
           footer: FOOTER,
         }));
       }
     }
-    await logActivity(u.id, 'Deliverable submitted', `${input.title} (${task.title})`);
+    await logActivity(u.id, 'Deliverable submitted', `${input.title} (${attachTask?.title ?? attachPhase?.title ?? ''})`);
     revalidatePath('/workspace/deliverables');
     revalidatePath('/workspace/tasks');
     return okRes('Deliverable submitted for review.');
@@ -1155,13 +1193,13 @@ export async function submitDeliverable(raw: unknown): Promise<ActionResult> {
 export async function submitNewVersion(raw: unknown): Promise<ActionResult> {
   try {
     const u = await requireUser();
-    const input = deliverableSchema.partial({ externalUrl: true, fileId: true, title: true }).parse(raw);
+    const input = deliverableVersionSchema.parse(raw);
     const old = await db.deliverable.findUnique({
-      where: { id: input.taskId },
+      where: { id: input.id },
       include: { versions: { orderBy: { version: 'desc' }, take: 1 } },
     });
     if (!old) {
-      return submitDeliverable(raw);
+      return { ok: false, error: 'Deliverable not found.' };
     }
     if (old.createdById !== u.id && u.role !== 'ADMIN') {
       return { ok: false, error: 'Only the submitter (or an admin) can add versions.' };

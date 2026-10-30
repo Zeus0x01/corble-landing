@@ -148,9 +148,19 @@ export const taskCommentSchema = z.object({
   body: z.string().trim().min(1).max(1000),
 });
 
-export const deliverableSchema = z.object({
-  title: z.string().trim().min(1).max(160),
-  taskId: z.string().min(1),
+export const deliverableSchema = z
+  .object({
+    title: z.string().trim().min(1).max(160),
+    taskId: idOrEmpty,
+    phaseId: idOrEmpty,
+    body: z.string().trim().min(1).max(4000),
+    externalUrl: z.string().url().max(400).optional(),
+    fileId: z.string().min(1).optional(),
+  })
+  .refine((d) => Boolean(d.taskId) !== Boolean(d.phaseId), 'Attach the deliverable to a task or an automation phase');
+
+export const deliverableVersionSchema = z.object({
+  id: z.string().min(1),
   body: z.string().trim().min(1).max(4000),
   externalUrl: z.string().url().max(400).optional(),
   fileId: z.string().min(1).optional(),

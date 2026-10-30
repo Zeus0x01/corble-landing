@@ -25,13 +25,13 @@ export default async function DeliverablesPage({ searchParams }: { searchParams:
   if (status) filters.push({ status });
   if (query) filters.push({ title: { contains: query, mode: 'insensitive' } });
 
-  const [deliverables, myTasks] = await Promise.all([
+  const [deliverables, myTasks, myPhases] = await Promise.all([
     db.deliverable.findMany({
       where: filters.length ? { AND: filters } : {},
       orderBy: [{ updatedAt: 'desc' }],
       include: {
         task: { select: { title: true, project: { select: { name: true } } } },
-        phase: { select: { title: true } },
+        phase: { select: { title: true, project: { select: { name: true } } } },
         createdBy: { select: { name: true } },
         versions: {
           orderBy: { version: 'desc' },
@@ -44,17 +44,24 @@ export default async function DeliverablesPage({ searchParams }: { searchParams:
       select: { id: true, title: true, status: true },
       orderBy: { title: 'asc' },
     }),
+    db.automationPhase.findMany({
+      where: { OR: [{ ownerId: me }, { project: { ownerId: me } }] },
+      select: { id: true, title: true, status: true, project: { select: { name: true } } },
+      orderBy: { title: 'asc' },
+    }),
   ]);
 
+  const hasTargets = myTasks.length > 0 || myPhases.length > 0;
   const fields = (): FieldSpec[] => [
-    { label: 'Task', name: 'taskId', type: 'select', required: true, full: true, options: myTasks.map((t) => ({ value: t.id, label: `${t.title} (${labelize(t.status)})` })) },
+    { label: 'Task — deliver work done inside a task', name: 'taskId', type: 'select', full: true, options: [{ value: '', label: '— none —' }, ...myTasks.map((t) => ({ value: t.id, label: `${t.title} (${labelize(t.status)})` }))], value: '' },
+    { label: 'Automation phase — deliver a workflow phase', name: 'phaseId', type: 'select', full: true, options: [{ value: '', label: '— none —' }, ...myPhases.map((p) => ({ value: p.id, label: `${p.title} · ${p.project.name}` }))], value: '' },
     { label: 'Deliverable title', name: 'title', required: true, value: '' },
     { label: 'Link (Google Doc, repo, design file…)', name: 'externalUrl', value: '' },
     { label: 'Body — what you delivered', name: 'body', type: 'text', full: true, required: true, value: '' },
   ];
 
   const versionFields = (d: { id: string; title: string; latest: string }): FieldSpec[] => [
-    { label: 'Deliverable ID', name: 'taskId', type: 'text', required: true, full: true, value: d.id },
+    { label: 'Deliverable', name: 'id', type: 'text', required: true, full: true, value: d.id },
     { label: 'Link (updated work)', name: 'externalUrl', value: d.latest },
     { label: 'Body — what changed in this version', name: 'body', type: 'text', full: true, required: true, value: '' },
   ];
@@ -78,7 +85,7 @@ export default async function DeliverablesPage({ searchParams }: { searchParams:
         <div style={{ display: 'flex', gap: 8 }}>
           {status && <a className="btn" href="/workspace/deliverables">Clear filter</a>}
           <ModalForm
-            title={myTasks.length === 0 ? 'No open tasks to deliver' : 'Submit deliverable'}
+            title={hasTargets ? 'Submit deliverable' : 'No open tasks or phases to deliver'}
             trigger="＋ Submit deliverable"
             action={submitDeliverable}
             fields={fields()}
@@ -112,7 +119,7 @@ export default async function DeliverablesPage({ searchParams }: { searchParams:
                     </td>
                     <td>
                       <div>{d.task?.title ?? d.phase?.title ?? '—'}</div>
-                      <div className="itemsub">{d.task?.project?.name ?? ''}</div>
+                      <div className="itemsub">{d.task?.project?.name ?? d.phase?.project?.name ?? ''}</div>
                     </td>
                     <td>
                       {latest ? (
