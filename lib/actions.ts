@@ -1830,9 +1830,27 @@ export async function connectGithub(raw: unknown): Promise<ActionResult> {
       create: { projectId, owner: input.owner, repo: input.repo, branch: input.branch, repoId: check.id ? String(check.id) : null, connectedById: u.id, status: 'connected' },
       update: { owner: input.owner, repo: input.repo, branch: input.branch, repoId: check.id ? String(check.id) : null, connectedById: u.id, status: 'connected' },
     });
-    await logActivity(u.id, 'GitHub repo connected', `${input.owner}/${input.repo} (${conn.branch})`);
+    // Auto-wire Vercel so the site is immediately deployable from the Deployments tab.
+    const { vercelConfigured, ensureVercelProject, slugifyVercelName } = await import('@/lib/vercel');
+    let deployNote = '';
+    if (vercelConfigured() && projectId) {
+      const existingConn = await db.deploymentConnection.findUnique({ where: { projectId }, select: { id: true } });
+      if (!existingConn) {
+        const vp = await ensureVercelProject(slugifyVercelName(`${input.owner}-${input.repo}`));
+        if (vp) {
+          await db.deploymentConnection.create({
+            data: { projectId, vercelProjectId: vp.id },
+          });
+          deployNote = ` Vercel project “${vp.name}” linked — preview/production deploys ready.`;
+        } else {
+          deployNote = ' Could not auto-link a Vercel project (API refused) — configure it manually in the Deployments tab.';
+        }
+      }
+    }
+    await logActivity(u.id, 'GitHub repo connected', `${input.owner}/${input.repo} (${conn.branch})${deployNote}`);
     revalidatePath('/workspace/github');
-    return okRes(`Connected ${input.owner}/${input.repo} @ ${conn.branch}.`);
+    revalidatePath('/workspace/vercel');
+    return okRes(`Connected ${input.owner}/${input.repo} @ ${conn.branch}. ${deployNote}`.trim());
   } catch (e) {
     return fail(e);
   }
@@ -1880,6 +1898,8 @@ export async function deployProject(raw: unknown): Promise<ActionResult> {
     if (u.role !== 'ADMIN') return { ok: false, error: 'Only admins can trigger deploys.' };
     const conn = await db.deploymentConnection.findUnique({ where: { projectId: input.projectId }, include: { project: { select: { name: true } } } });
     if (!conn) return { ok: false, error: 'No Vercel project connected for this site yet.' };
+    const gh = await db.gitHubConnection.findUnique({ where: { projectId: input.projectId }, select: { owner: true, repo: true, branch: true } });
+    if (!gh) return { ok: false, error: 'Connect the GitHub repo first (Websites tab) — deploys build from it.' };
     if (input.production) {
       const proceed = (raw as { confirm?: boolean }).confirm;
       if (!proceed) return { ok: false, error: 'Confirm production deploy first (pass confirm).' };
@@ -1888,7 +1908,11 @@ export async function deployProject(raw: unknown): Promise<ActionResult> {
     if (!vercelConfigured()) return { ok: false, error: 'VERCEL_TOKEN is not configured in this environment.' };
     let out: { vercelId: string; url?: string; status: string };
     try {
-      out = await createDeployment(conn.vercelProjectId, conn.vercelTeamId ?? undefined, input.production ? 'production' : 'preview');
+      out = await createDeployment(conn.vercelProjectId, conn.vercelTeamId ?? undefined, input.production ? 'production' : 'preview', {
+        repo: `${gh.owner}/${gh.repo}`,
+        ref: gh.branch,
+        message: `${input.production ? 'Production' : 'Preview'} deploy fired from Corble workspace`,
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       const friendly = msg.startsWith('NOT_CONFIGURED') ? 'VERCEL_TOKEN not configured in this environment.' : msg.startsWith('VERCEL ') ? `Vercel API error â€” ${msg.slice(0, 240)}` : msg.slice(0, 240);
