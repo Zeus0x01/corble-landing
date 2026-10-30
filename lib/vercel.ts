@@ -61,6 +61,7 @@ export async function createDeployment(
   const qs = team(vercelTeamId);
   // v13 deployments: bind to the project at the top level; gitSource carries the repo + ref.
   const payload: {
+    name?: string;
     projectId?: string;
     target?: string;
     meta?: Record<string, string>;
@@ -74,6 +75,8 @@ export async function createDeployment(
     if (!Number.isSafeInteger(repoId) || repoId <= 0) {
       throw new Error('VERCEL_REPO_ID_MISSING: reconnect the GitHub repository to refresh its repository ID.');
     }
+    const repoName = opts.repo.split('/').pop() ?? opts.repo;
+    payload.name = slugify(repoName);
     payload.projectId = vercelProjectId;
     payload.gitSource = { type: 'github', repoId, ref: opts.ref ?? 'main' };
   }
