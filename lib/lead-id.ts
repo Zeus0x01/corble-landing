@@ -12,7 +12,12 @@ export async function allocateLeadCode(tx: LeadIdClient): Promise<string> {
 }
 
 export async function allocateLeadCodes(tx: LeadIdClient, count: number): Promise<string[]> {
-  const codes: string[] = [];
-  for (let i = 0; i < count; i += 1) codes.push(await allocateLeadCode(tx));
-  return codes;
+  if (count <= 0) return [];
+  const sequence = await tx.leadIdSequence.update({
+    where: { id: 1 },
+    data: { nextValue: { increment: count } },
+    select: { nextValue: true },
+  });
+  const firstValue = sequence.nextValue - count;
+  return Array.from({ length: count }, (_, index) => `LEAD-${String(firstValue + index).padStart(6, '0')}`);
 }
