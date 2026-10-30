@@ -23,7 +23,7 @@ async function postImport(req: NextRequest) {
 
   const { rows, invalid, columns } = parseCsv(bodyJson.csv);
   const mapped = rows.map((row) => {
-    const contact = row.contactPerson ?? row.email ?? row.phone;
+    const contact = row.contactPerson;
     const valueDigits = (row.value ?? '').replace(/[^\d]/g, '');
     const location = row.location?.split(',').map((part) => part.trim()).filter(Boolean) ?? [];
     return {

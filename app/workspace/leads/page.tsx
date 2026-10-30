@@ -66,7 +66,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
     <><a href={`/workspace/leads?lead=${encodeURIComponent(l.leadCode)}`} style={{ color: 'var(--purple)' }}>{l.leadCode}</a><LeadCodeCopy code={l.leadCode} /></>,
     <>
         <strong>{l.name}</strong>
-        <div className="itemsub">{l.contactPerson || '—'} · {l.service}</div>
+      {l.contactPerson && l.contactPerson !== l.phone && l.contactPerson !== l.email ? <div className="itemsub">{l.contactPerson}</div> : null}
       </>,
     <>
       {l.email ? <div>{l.email}</div> : null}
