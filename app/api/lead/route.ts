@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { db } from '@/lib/db';
+import { allocateLeadCode } from '@/lib/lead-id';
 
 const schema = z.object({
   name: z.string().min(2).max(120),
@@ -22,8 +23,9 @@ export async function POST(req: Request) {
       orderBy: { createdAt: 'asc' },
     });
 
-    const lead = await db.lead.create({
+    const lead = await db.$transaction(async (tx) => tx.lead.create({
       data: {
+        leadCode: await allocateLeadCode(tx),
         name: data.business || data.name,
         contactPerson: data.name,
         email: data.email,
@@ -33,7 +35,7 @@ export async function POST(req: Request) {
         status: 'NEW',
         ownerId: admin?.id ?? null,
       },
-    });
+    }));
 
     await db.activity.create({
       data: {

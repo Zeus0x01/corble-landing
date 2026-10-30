@@ -17,8 +17,9 @@ const PRIORITY = ['LOW', 'MEDIUM', 'HIGH'] as const;
 
 function taskFields(
   projects: { id: string; name: string }[],
+  leads: { id: string; leadCode: string; name: string }[],
   users: { id: string; name: string }[],
-  edit?: { id: string; title: string; description: string | null; projectId: string | null; assigneeId: string | null; priority: string; status: string; startDate: Date | null; dueDate: Date | null },
+  edit?: { id: string; title: string; description: string | null; projectId: string | null; leadId: string | null; assigneeId: string | null; priority: string; status: string; startDate: Date | null; dueDate: Date | null },
 ): FieldSpec[] {
   return [
     { label: 'Task title', name: 'title', required: true, value: edit?.title },
@@ -30,6 +31,7 @@ function taskFields(
       value: edit?.description ?? '',
     },
     { label: 'Project', name: 'projectId', type: 'select', options: [{ value: '', label: 'None' }, ...projects.map((p) => ({ value: p.id, label: p.name }))], value: edit?.projectId ?? '' },
+    { label: 'Linked lead', name: 'leadId', type: 'select', options: [{ value: '', label: 'None' }, ...leads.map((l) => ({ value: l.id, label: `${l.leadCode} · ${l.name}` }))], value: edit?.leadId ?? '' },
     { label: 'Assignee', name: 'assigneeId', type: 'select', options: [{ value: '', label: 'Unassigned' }, ...users.map((u) => ({ value: u.id, label: u.name }))], value: edit?.assigneeId ?? '' },
     { label: 'Priority', name: 'priority', type: 'select', options: PRIORITY.map((p) => ({ value: p, label: labelize(p) })), value: edit?.priority },
     { label: 'Status', name: 'status', type: 'select', options: STATUS.map((s) => ({ value: s, label: labelize(s) })), value: edit?.status },
@@ -59,6 +61,7 @@ export default async function MyTasksPage({ searchParams }: { searchParams: Prom
     orderBy: [{ status: 'asc' }, { dueDate: { sort: 'asc', nulls: 'last' } }],
     include: {
       project: { select: { name: true } },
+      lead: { select: { leadCode: true, name: true } },
       assignee: { select: { name: true } },
       originalOwner: { select: { name: true } },
       createdBy: { select: { name: true } },
@@ -83,8 +86,9 @@ export default async function MyTasksPage({ searchParams }: { searchParams: Prom
       _count: { select: { comments: true, deliverables: true } },
     },
   });
-  const [projects, users, myRequests, taskFileCounts] = await Promise.all([
+  const [projects, leads, users, myRequests, taskFileCounts] = await Promise.all([
     db.project.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+  db.lead.findMany({ select: { id: true, leadCode: true, name: true }, orderBy: { name: 'asc' } }),
     db.user.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     db.handoverRequest.findMany({ where: { requesterId: meId, status: 'PENDING' }, select: { taskId: true } }),
     db.fileAsset.groupBy({ by: ['taskId'], _count: { _all: true }, where: { taskId: { not: null } } }),
@@ -110,7 +114,7 @@ export default async function MyTasksPage({ searchParams }: { searchParams: Prom
             title="Add task"
             trigger="＋ Add task"
             action={createTask}
-            fields={taskFields(projects, users).filter((f) => f.name !== 'id')}
+            fields={taskFields(projects, leads, users).filter((f) => f.name !== 'id')}
           />
         </div>
       </div>
@@ -135,7 +139,7 @@ export default async function MyTasksPage({ searchParams }: { searchParams: Prom
                       {t.completedAt ? `✓ ${formatDate(t.completedAt)}` : ''}
                     </div>
                   </td>
-                  <td><div className="itemsub">{t.project?.name ?? '—'}</div></td>
+                  <td><div className="itemsub">{t.project?.name ?? '—'}</div>{t.lead ? <div className="itemsub"><a href={`/workspace/leads?lead=${encodeURIComponent(t.lead.leadCode)}`} style={{ color: 'var(--purple)' }}>{t.lead.leadCode}</a></div> : null}</td>
                   <td>
                     <div>{t.assignee?.name ?? 'Unassigned'}</div>
                     <div className="itemsub">orig: {t.originalOwner?.name ?? t.assignee?.name ?? '—'}</div>
@@ -183,7 +187,7 @@ export default async function MyTasksPage({ searchParams }: { searchParams: Prom
                       trigger="✎"
                       triggerClass="btn sq"
                       action={updateTask}
-                      fields={taskFields(projects, users, { id: t.id, title: t.title, description: t.description, projectId: t.projectId, assigneeId: t.assigneeId, priority: t.priority, status: t.status, startDate: t.startDate, dueDate: t.dueDate })}
+                      fields={taskFields(projects, leads, users, { id: t.id, title: t.title, description: t.description, projectId: t.projectId, leadId: t.leadId, assigneeId: t.assigneeId, priority: t.priority, status: t.status, startDate: t.startDate, dueDate: t.dueDate })}
                     />
                     <ConfirmAction action={deleteTask} payload={t.id} label="Delete task" />
                   </td>

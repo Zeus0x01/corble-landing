@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/app/workspace/Shell';
 
-type PreviewRes = { ok: boolean; total?: number; valid?: { company: string; email: string | null }[]; invalid?: { reason: string }[]; error?: string };
+type PreviewRes = { ok: boolean; total?: number; columns?: string[]; valid?: { company: string; email: string | null }[]; invalid?: { reason: string }[]; error?: string };
 type CommitRes = { ok: boolean; created?: number; duplicates?: number; invalid?: number; error?: string };
 export default function CsvImport() {
   const toast = useToast();
@@ -64,6 +64,7 @@ export default function CsvImport() {
           <span className="pill">
             {filename}: {preview.total ?? 0} rows · {preview.valid?.length ?? 0} valid · {preview.invalid?.length ?? 0} invalid
           </span>
+          {preview.columns?.length ? <span className="sub">Detected columns: {preview.columns.join(', ')}</span> : null}
           <button
             className="btn"
             disabled={busy || (preview.valid?.length ?? 0) === 0}

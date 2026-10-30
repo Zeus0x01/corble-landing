@@ -53,6 +53,7 @@ import {
 import { notifyTaskAssigned, notifyBranded } from '@/lib/mail';
 import { safeFetch } from '@/lib/urlguard';
 import { domainFromEmail } from '@/lib/ingest';
+import { allocateLeadCode } from '@/lib/lead-id';
 
 export type ActionResult = { ok: boolean; error?: string; message?: string };
 
@@ -155,10 +156,18 @@ export async function createLead(raw: unknown): Promise<ActionResult> {
   try {
     const u = await requireUser();
     const input = leadSchema.parse(raw);
-    const lead = await db.lead.create({
+    const lead = await db.$transaction(async (tx) => tx.lead.create({
       data: {
+        leadCode: await allocateLeadCode(tx),
         name: input.name,
         contactPerson: input.contactPerson || null,
+        email: input.email || null,
+        phone: input.phone || null,
+        website: input.website || null,
+        industry: input.industry || null,
+        city: input.city || null,
+        country: input.country || null,
+        notes: input.notes || null,
         service: input.service,
         source: input.source,
         status: input.status as LeadStatus,
@@ -166,7 +175,7 @@ export async function createLead(raw: unknown): Promise<ActionResult> {
         nextFollowUp: input.nextFollowUp,
         ownerId: input.ownerId ?? null,
       },
-    });
+    }));
     await logActivity(u.id, 'Lead created', `${lead.name} Â· ${lead.service}`);
     revalidatePath('/workspace');
     revalidatePath('/workspace/leads');
@@ -186,6 +195,13 @@ export async function updateLead(raw: unknown): Promise<ActionResult> {
       data: {
         name: input.name,
         contactPerson: input.contactPerson || null,
+        email: input.email || null,
+        phone: input.phone || null,
+        website: input.website || null,
+        industry: input.industry || null,
+        city: input.city || null,
+        country: input.country || null,
+        notes: input.notes || null,
         service: input.service,
         source: input.source,
         status: input.status as LeadStatus,
@@ -417,6 +433,7 @@ export async function createTask(raw: unknown): Promise<ActionResult> {
         title: input.title,
         description: input.description,
         projectId: input.projectId ?? null,
+        leadId: input.leadId ?? null,
         assigneeId: input.assigneeId ?? null,
         originalOwnerId: input.assigneeId ?? null,
         createdById: u.id,
@@ -450,6 +467,7 @@ export async function updateTask(raw: unknown): Promise<ActionResult> {
         title: input.title,
         description: input.description,
         projectId: input.projectId ?? null,
+        leadId: input.leadId ?? null,
         assigneeId: input.assigneeId ?? null,
         originalOwnerId: before?.originalOwnerId ?? input.assigneeId ?? null,
         priority: input.priority as TaskPriority,
@@ -1670,10 +1688,16 @@ export async function promoteToFinal(raw: unknown): Promise<ActionResult> {
       const final = await tx.lead.create({
         data: {
           name: input.overrideCompany?.trim() || lead.company,
+          leadCode: lead.leadCode,
           contactPerson: lead.contactPerson,
           email: lead.email,
-          notes: `Promoted from Incoming Lead ${lead.id} (source: ${lead.source}${lead.sourceUrl ? `, ${lead.sourceUrl}` : ''}). ${lead.researchNotes ? 'Research: ' + lead.researchNotes : ''}`.slice(0, 1900),
+          phone: lead.phone,
+          website: lead.website,
+          industry: lead.industry,
+          city: lead.city,
+          country: lead.country,
           service: lead.industry ?? 'General enquiry',
+          notes: `Promoted from Incoming Lead ${lead.id} (source: ${lead.source}${lead.sourceUrl ? `, ${lead.sourceUrl}` : ''}). ${lead.researchNotes ? 'Research: ' + lead.researchNotes : ''}`.slice(0, 1900),
           source: `Incoming ï¿½ ${lead.source}`,
           status: 'NEW',
           estValue: input.estValue,

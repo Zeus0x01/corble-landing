@@ -7,6 +7,7 @@ import { useToast } from '@/app/workspace/Shell';
 type PreviewRes = {
   ok: boolean;
   total?: number;
+  columns?: string[];
   dupsInDb?: number;
   valid?: { name: string; service: string; estValue: number; contactPerson: string | null }[];
   invalid?: { reason: string }[];
@@ -81,6 +82,7 @@ export default function LeadCsvImport() {
           <span className="pill">
             {filename}: {preview.total} rows · {preview.valid?.length ?? 0} to import · {preview.dupsInDb} already exist
           </span>
+          {preview.columns?.length ? <span className="sub">Mapped columns: {preview.columns.join(', ')}</span> : null}
           <button
             className="btn"
             disabled={busy || (preview.valid?.length ?? 0) === 0}

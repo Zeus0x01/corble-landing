@@ -86,6 +86,7 @@ async function main() {
 
   const dental = await prisma.lead.create({
     data: {
+      leadCode: 'LEAD-000001',
       name: 'Bright Dental Clinic',
       contactPerson: 'Mariam Hassan',
       service: 'AI Automation',
@@ -98,6 +99,7 @@ async function main() {
   });
   const nile = await prisma.lead.create({
     data: {
+      leadCode: 'LEAD-000002',
       name: 'Nile Logistics',
       contactPerson: 'Omar Adel',
       service: 'Web Development',
@@ -110,6 +112,7 @@ async function main() {
   });
   const orbit = await prisma.lead.create({
     data: {
+      leadCode: 'LEAD-000003',
       name: 'Orbit Fitness',
       contactPerson: 'Salma Nabil',
       service: 'Website',
@@ -122,6 +125,7 @@ async function main() {
   });
   const cairo = await prisma.lead.create({
     data: {
+      leadCode: 'LEAD-000004',
       name: 'Cairo Retail Group',
       contactPerson: 'Karim Samy',
       service: 'Cybersecurity',
@@ -225,6 +229,7 @@ async function main() {
   await prisma.incomingLead.createMany({
     data: [
       {
+        leadCode: 'LEAD-000005',
         company: 'Smile Center Clinic',
         contactPerson: 'Dr. Maya Habib',
         email: 'frontdesk@smilecenter.eg',
@@ -243,6 +248,7 @@ async function main() {
         importBatchId: importBatch.id,
       },
       {
+        leadCode: 'LEAD-000006',
         company: 'Glow Fitness Studio',
         email: 'hello@glowfit.ma',
         website: 'https://glowfit.ma',
@@ -256,6 +262,7 @@ async function main() {
         processingStatus: 'NEW',
       },
       {
+        leadCode: 'LEAD-000007',
         company: 'Petit Pret Retail',
         email: 'buyer@petitpret.com',
         industry: 'Retail',
@@ -267,6 +274,7 @@ async function main() {
         researchNotes: 'Reached out on 10-24, awaiting purchasing manager reply.',
       },
       {
+        leadCode: 'LEAD-000008',
         company: 'Smile Center Clinic',
         email: 'frontdesk@smilecenter.eg',
         source: 'n8n: booking-form scraper',
@@ -278,6 +286,11 @@ async function main() {
         importBatchId: importBatch.id,
       },
     ],
+  });
+  await prisma.leadIdSequence.upsert({
+    where: { id: 1 },
+    update: { nextValue: 9 },
+    create: { id: 1, nextValue: 9 },
   });
 
   const automation = await prisma.automationProject.create({

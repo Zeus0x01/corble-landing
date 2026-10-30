@@ -208,6 +208,9 @@ export interface CsvLead {
   domain: string | null;
   industry: string | null;
   location: string | null;
+  city: string | null;
+  country: string | null;
+  source: string | null;
   notes: string | null;
   value: string | null;
   error?: string;
@@ -223,18 +226,21 @@ const CSV_ALIASES: Record<keyof Omit<CsvLead, 'error'>, string[]> = {
   website: ['website', 'url', 'site', 'link', 'homepage', 'site url'],
   domain: ['domain', 'website domain', 'host'],
   industry: ['industry', 'category', 'sector', 'business type', 'type', 'categories'],
-  location: ['location', 'city', 'address', 'country', 'state', 'region'],
+  location: ['location', 'address', 'state', 'region'],
+  city: ['city', 'town'],
+  country: ['country', 'nation'],
+  source: ['source', 'lead source', 'origin', 'channel'],
   notes: ['notes', 'note', 'description', 'summary', 'comment'],
   value: ['value', 'est value', 'estimated value', 'budget', 'price', 'potential value'],
 };
 
-export function parseCsv(csv: string): { rows: CsvLead[]; invalid: CsvLead[] } {
+export function parseCsv(csv: string): { rows: CsvLead[]; invalid: CsvLead[]; columns: string[] } {
   const table = parseCsvText(csv);
-  if (table.rows.length < 2) return { rows: [], invalid: [] };
+  if (table.rows.length < 2) return { rows: [], invalid: [], columns: [] };
   const [header, ...body] = table.rows;
   const headers = header.map(normHeader);
   const MAX_ROWS = 5000;
-  if (body.length > MAX_ROWS) return { rows: [], invalid: [{ ...emptyLead(), error: `File too large: ${body.length} rows > ${MAX_ROWS} — split the file` }] };
+  if (body.length > MAX_ROWS) return { rows: [], invalid: [{ ...emptyLead(), error: `File too large: ${body.length} rows > ${MAX_ROWS} — split the file` }], columns: headers };
   const fieldsOrder = Object.keys(CSV_ALIASES) as (keyof Omit<CsvLead, 'error'>)[];
   const colFor = new Map<keyof Omit<CsvLead, 'error'>, number>();
   const used = new Set<number>();
@@ -261,7 +267,6 @@ export function parseCsv(csv: string): { rows: CsvLead[]; invalid: CsvLead[] } {
   const cols = (f: keyof Omit<CsvLead, 'error'>) => colFor.get(f) ?? -1;
   // Scrape exports often carry a second phone column (phone2) — used as fallback only.
   const phone2Col = headers.findIndex((h, i) => !used.has(i) && /^(phone ?2|mobile ?2|tel ?2|second phone|secondary phone|alt phone)$/.test(h));
-  const countryCol = headers.findIndex((h, i) => !used.has(i) && h === 'country');
   const rows: CsvLead[] = [];
   const invalid: CsvLead[] = [];
   for (const cells of body) {
@@ -293,15 +298,19 @@ export function parseCsv(csv: string): { rows: CsvLead[]; invalid: CsvLead[] } {
       domain: get(cols('domain')),
       industry: get(cols('industry')),
       location: get(cols('location')),
+      city: get(cols('city')),
+      country: get(cols('country')),
+      source: get(cols('source')),
       notes,
       value: get(cols('value')),
     };
     // Scrape titles often embed a trailing " original => translated" pair — keep the readable prefix.
     const cut = row.company.split('=>')[0].trim();
     if (cut) row.company = cut;
-    if (row.location && countryCol >= 0) {
-      const country = (cells[countryCol] ?? '').trim();
-      if (country && !row.location.toLowerCase().includes(country.toLowerCase())) row.location = `${row.location}, ${country}`;
+    if (row.city) {
+      row.location = [row.city, row.country].filter(Boolean).join(', ');
+    } else if (row.location && row.country && !row.location.toLowerCase().includes(row.country.toLowerCase())) {
+      row.location = `${row.location}, ${row.country}`;
     }
     const phoneOk = Boolean(phone);
     const webOk = Boolean(row.website && /\./.test(row.website));
@@ -321,11 +330,11 @@ export function parseCsv(csv: string): { rows: CsvLead[]; invalid: CsvLead[] } {
       rows.push(row);
     }
   }
-  return { rows, invalid };
+  return { rows, invalid, columns: headers };
 }
 
 function emptyLead(): CsvLead {
-  return { company: '', contactPerson: null, email: null, phone: null, website: null, domain: null, industry: null, location: null, notes: null, value: null };
+  return { company: '', contactPerson: null, email: null, phone: null, website: null, domain: null, industry: null, location: null, city: null, country: null, source: null, notes: null, value: null };
 }
 
 export { CSV_HEAD };

@@ -214,9 +214,15 @@ model User {
 
 model Lead {
   id            String     @id @default(cuid())
+  leadCode      String     @unique
   name          String
   contactPerson String?
   email         String?
+  phone         String?
+  website       String?
+  industry      String?
+  city          String?
+  country       String?
   notes         String?
   service       String
   source        String
@@ -226,6 +232,7 @@ model Lead {
   ownerId       String?
   owner         User?      @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   projects      Project[]
+  tasks         Task[]
   fromIncoming  IncomingLead[] @relation("IncomingFinal")
   fileLinks     FileLeadLink[] @relation("LeadFileLinks")
   createdAt     DateTime   @default(now())
@@ -270,6 +277,8 @@ model Task {
   description         String?
   projectId           String?
   project             Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  leadId              String?
+  lead                Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
   assigneeId          String?
   assignee            User?        @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   originalOwnerId     String?
@@ -292,6 +301,7 @@ model Task {
   files        FileAsset[]   @relation("TaskFile")
 
   @@index([status])
+  @@index([leadId])
   @@index([dueDate])
   @@index([assigneeId])
   @@index([deletedAt])
@@ -385,6 +395,7 @@ model DeliverableReview {
 
 model IncomingLead {
   id               String                 @id @default(cuid())
+  leadCode         String                 @unique
   company          String
   contactPerson    String?
   email            String?
@@ -393,6 +404,8 @@ model IncomingLead {
   domain           String?
   industry         String?
   location         String?
+  city             String?
+  country          String?
   source           String
   sourceUrl        String?
   externalId       String?
@@ -422,6 +435,12 @@ model IncomingLead {
   @@index([processingStatus])
   @@index([verification])
   @@index([domain])
+}
+
+model LeadIdSequence {
+  id        Int      @id @default(1)
+  nextValue Int
+  updatedAt DateTime @updatedAt
 }
 
 model LeadResearchUpdate {

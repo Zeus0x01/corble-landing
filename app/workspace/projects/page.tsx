@@ -12,7 +12,7 @@ const SERVICES = ['AI Automation', 'Web Development', 'Cybersecurity', 'Website'
 const STATUS = ['PLANNING', 'IN_PROGRESS', 'REVIEW', 'DELIVERED', 'COMPLETED'] as const;
 
 function projectFields(
-  leads: { id: string; name: string }[],
+  leads: { id: string; leadCode: string; name: string }[],
   owners: { id: string; name: string }[],
   edit?: { id: string; name: string; clientName: string; leadId: string | null; service: string; status: string; progress: number; dueDate: Date | null; ownerId: string | null; budget: number },
 ): FieldSpec[] {
@@ -25,7 +25,7 @@ function projectFields(
     { label: 'Due date', name: 'dueDate', type: 'date', value: edit?.dueDate ? toISODate(edit.dueDate) : '' },
     { label: 'Budget (EGP)', name: 'budget', type: 'number', required: true, value: edit?.budget ?? 0 },
     { label: 'Owner', name: 'ownerId', type: 'select', options: [{ value: '', label: 'Unassigned' }, ...owners.map((o) => ({ value: o.id, label: o.name }))], value: edit?.ownerId ?? '' },
-    { label: 'Linked lead', name: 'leadId', type: 'select', options: [{ value: '', label: 'None' }, ...leads.map((l) => ({ value: l.id, label: l.name }))], value: edit?.leadId ?? '' },
+    { label: 'Linked lead', name: 'leadId', type: 'select', options: [{ value: '', label: 'None' }, ...leads.map((l) => ({ value: l.id, label: `${l.leadCode} · ${l.name}` }))], value: edit?.leadId ?? '' },
     { label: 'Record ID', name: 'id', type: 'text', required: true, full: true, value: edit?.id ?? 'auto' },
   ];
   return base;
@@ -39,9 +39,9 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
     db.project.findMany({
       where: query ? { OR: [{ name: { contains: query, mode: 'insensitive' } }, { clientName: { contains: query, mode: 'insensitive' } }] } : {},
       orderBy: [{ status: 'asc' }, { dueDate: { sort: 'asc', nulls: 'last' } }],
-      include: { owner: { select: { name: true } } },
+      include: { owner: { select: { name: true } }, lead: { select: { leadCode: true } } },
     }),
-    db.lead.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+    db.lead.findMany({ select: { id: true, leadCode: true, name: true }, orderBy: { name: 'asc' } }),
     db.user.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     db.fileAsset.groupBy({ by: ['projectId'], _count: { _all: true }, where: { projectId: { not: null } } }),
   ]);
@@ -74,7 +74,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
               projects.map((p) => (
                 <tr key={p.id}>
                   <td><strong>{p.name}</strong><div className="itemsub">{p.service}</div></td>
-                  <td>{p.clientName}</td>
+                  <td>{p.clientName}{p.lead ? <div className="itemsub"><a href={`/workspace/leads?lead=${encodeURIComponent(p.lead.leadCode)}`} style={{ color: 'var(--purple)' }}>{p.lead.leadCode}</a></div> : null}</td>
                   <td>{p.owner?.name ?? '—'}</td>
                   <td>
                     <InlineSelect

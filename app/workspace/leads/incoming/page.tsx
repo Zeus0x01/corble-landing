@@ -7,6 +7,7 @@ import IncomingActions from './IncomingActions';
 import CsvImport from './CsvImport';
 import LinkFiles, { type IncomingFileLink, type LibraryFile } from './LinkFiles';
 import DataTable, { type DtRow } from '@/components/DataTable';
+import LeadCodeCopy from '../LeadCodeCopy';
 
 export const dynamic = 'force-dynamic';
 
@@ -71,6 +72,7 @@ export default async function IncomingLeadsPage({ searchParams }: { searchParams
     cells: [
       <>
         <strong>{l.company}</strong>
+        <div className="itemsub"><a href={`/workspace/leads/incoming?lead=${encodeURIComponent(l.leadCode)}`} style={{ color: 'var(--purple)' }}>{l.leadCode}</a> <LeadCodeCopy code={l.leadCode} /></div>
         {l.industry ? <div className="itemsub">{l.industry}</div> : null}
         {l.website ? <div className="itemsub"><a href={l.website.startsWith('http') ? l.website : `https://${l.website}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--purple)' }}>{l.website} ↗</a></div> : null}
         <RawPayload raw={l.rawPayload} />

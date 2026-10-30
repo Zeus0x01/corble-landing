@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { dbUser } from '@/lib/guard';
 import { parseCsv, normalizeEmail, normalizePhone, phoneFingerprint, normalizeWebsite, isFreeMailDomain } from '@/lib/ingest';
 import { domainOf } from '@/lib/ingest';
+import { allocateLeadCodes } from '@/lib/lead-id';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,12 +21,13 @@ export async function POST(req: NextRequest) {
   }
   if (!(role === 'ADMIN' || role === 'MEMBER')) return Response.json({ ok: false, error: 'Not allowed.' }, { status: 403 });
 
-    const { rows, invalid } = parseCsv(bodyJson.csv);
+    const { rows, invalid, columns } = parseCsv(bodyJson.csv);
     if (bodyJson.mode !== 'commit') {
       return Response.json({
         ok: true,
         mode: 'preview',
         total: rows.length + invalid.length,
+        columns,
         valid: rows.slice(0, 200),
         invalid: invalid.slice(0, 50),
       });
@@ -69,6 +71,7 @@ export async function POST(req: NextRequest) {
         continue;
       }
       toCreate.push({
+        leadCode: '',
         company: row.company.slice(0, 160),
         contactPerson: row.contactPerson,
         email,
@@ -77,7 +80,7 @@ export async function POST(req: NextRequest) {
         domain,
         industry: row.industry,
         location: row.location,
-        source: 'CSV import',
+        source: row.source?.slice(0, 80) || 'CSV import',
         workflowId: null,
         batchId: String(batch.id),
         rawPayload: row as unknown as object,
@@ -88,6 +91,13 @@ export async function POST(req: NextRequest) {
         researchNotes: row.notes ?? null,
       });
     }
+    const codes = await db.$transaction(async (tx) => allocateLeadCodes(tx, toCreate.length));
+    toCreate.forEach((row, index) => {
+      row.leadCode = codes[index];
+      const location = row.location?.split(',').map((part) => part.trim()).filter(Boolean) ?? [];
+      row.city = row.city ?? location[0] ?? null;
+      row.country = row.country ?? (location.length > 1 ? location[location.length - 1] : null);
+    });
     const CHUNK = 500;
     for (let i = 0; i < toCreate.length; i += CHUNK) {
       await db.incomingLead.createMany({ data: toCreate.slice(i, i + CHUNK) });

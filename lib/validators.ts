@@ -21,6 +21,13 @@ const idOrEmpty = z
 export const leadSchema = z.object({
   name: z.string().trim().min(1, 'Name is required').max(120),
   contactPerson: z.string().trim().max(120).optional().default(''),
+  email: z.string().trim().email('Enter a valid email').max(200).optional().or(z.literal('')).default(''),
+  phone: z.string().trim().max(60).optional().default(''),
+  website: z.string().trim().max(200).optional().default(''),
+  industry: z.string().trim().max(120).optional().default(''),
+  city: z.string().trim().max(120).optional().default(''),
+  country: z.string().trim().max(120).optional().default(''),
+  notes: z.string().trim().max(2000).optional().default(''),
   service: z.string().trim().min(1).max(80),
   source: z.string().trim().min(1).max(80),
   status: z.enum(['NEW', 'CONTACTED', 'QUALIFIED', 'PROPOSAL_SENT', 'WON', 'LOST']),
@@ -58,6 +65,7 @@ export const taskSchema = z.object({
     .optional()
     .transform((v) => (v && v.trim() ? v.trim().slice(0, 2000) : null)),
   projectId: idOrEmpty,
+  leadId: idOrEmpty,
   assigneeId: idOrEmpty,
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH']),
   status: z.enum(['TODO', 'IN_PROGRESS', 'DONE', 'BLOCKED']),

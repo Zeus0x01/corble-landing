@@ -3,6 +3,7 @@ import { timingSafeEqual } from 'crypto';
 import { db } from '@/lib/db';
 import { ingestSchema, normalizedSummary, ingestKeyOf, rateLimit, phoneFingerprint } from '@/lib/ingest';
 import { pruneRateLimits } from '@/lib/ratelimit';
+import { allocateLeadCode } from '@/lib/lead-id';
 
 export const dynamic = 'force-dynamic';
 
@@ -83,6 +84,7 @@ export async function POST(req: NextRequest) {
       void url;
       const created = await tx.incomingLead.create({
         data: {
+          leadCode: await allocateLeadCode(tx),
           company: payload.fields.company,
           contactPerson: payload.fields.contactPerson ?? null,
           email: norm.email,
@@ -91,6 +93,7 @@ export async function POST(req: NextRequest) {
           domain: norm.domain,
           industry: payload.fields.industry ?? null,
           location: payload.fields.location ?? null,
+          city: payload.fields.location?.split(',')[0]?.trim() || null,
           source: payload.source,
           sourceUrl: payload.sourceUrl ?? null,
           externalId: payload.recordId ?? payload.externalEventId ?? null,
