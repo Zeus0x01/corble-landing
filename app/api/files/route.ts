@@ -1,6 +1,6 @@
 import { db } from '@/lib/db';
-import { auth } from '@/lib/auth';
 import { saveUpload, hasS3 } from '@/lib/storage';
+import { dbUser } from '@/lib/guard';
 import { revalidatePath } from 'next/cache';
 
 export const runtime = 'nodejs';
@@ -10,8 +10,8 @@ const MAX_BYTES = 10 * 1024 * 1024;
 const ALLOWED = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf', 'text/plain', 'text/csv', 'application/json', 'application/zip', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']);
 
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user?.id) return Response.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
+  const me = await dbUser();
+  if (!me) return Response.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
 
   let form: FormData;
   try {
@@ -46,11 +46,11 @@ export async function POST(req: Request) {
         storageKey,
         storage,
         projectId,
-        uploadedById: session.user.id,
+        uploadedById: me.id,
       },
     });
     await db.activity.create({
-      data: { userId: session.user.id, message: 'File uploaded', detail: asset.name },
+      data: { userId: me.id, message: 'File uploaded', detail: asset.name },
     });
     revalidatePath('/workspace/files');
     return Response.json({ ok: true, id: asset.id, backend: hasS3() ? 's3' : 'local' });

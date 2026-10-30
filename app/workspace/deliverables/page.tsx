@@ -40,7 +40,7 @@ export default async function DeliverablesPage({ searchParams }: { searchParams:
       },
     }),
     db.task.findMany({
-      where: { assigneeId: me },
+      where: { assigneeId: me, deletedAt: null },
       select: { id: true, title: true, status: true },
       orderBy: { title: 'asc' },
     }),

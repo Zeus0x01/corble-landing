@@ -1,13 +1,13 @@
 import { NextRequest } from 'next/server';
 import { db } from '@/lib/db';
-import { auth } from '@/lib/auth';
+import { dbUser } from '@/lib/guard';
 import { listTree, safeOwnerRepo, safeBranch, githubConfigured } from '@/lib/github';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return Response.json({ ok: false, error: 'Sign in first.' }, { status: 401 });
+  const session = await dbUser();
+  if (!session) return Response.json({ ok: false, error: 'Sign in first.' }, { status: 401 });
   if (!githubConfigured()) return Response.json({ ok: false, error: 'NOT_CONFIGURED', setup: 'Set GITHUB_TOKEN (repo contents:read/write PAT) in the server env.' }, { status: 503 });
 
   const connId = req.nextUrl.searchParams.get('conn');

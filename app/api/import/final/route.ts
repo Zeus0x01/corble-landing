@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
+import { dbUser } from '@/lib/guard';
 import { parseCsv } from '@/lib/ingest';
 
 export const dynamic = 'force-dynamic';
@@ -9,10 +10,9 @@ export const dynamic = 'force-dynamic';
 const SERVICE_DEFAULT = 'Website';
 
 export async function POST(req: NextRequest) {
-  const { auth } = await import('@/lib/auth');
-  const session = await auth();
-  if (!session?.user?.id) return Response.json({ ok: false, error: 'Sign in first.' }, { status: 401 });
-  const userId = session.user.id as string;
+  const me = await dbUser();
+  if (!me) return Response.json({ ok: false, error: 'Sign in first.' }, { status: 401 });
+  const userId = me.id;
 
   const bodyJson = (await req.json().catch(() => null)) as { filename?: string; csv?: string; mode?: string } | null;
   if (!bodyJson || typeof bodyJson.csv !== 'string' || bodyJson.csv.length > 2_000_000) {

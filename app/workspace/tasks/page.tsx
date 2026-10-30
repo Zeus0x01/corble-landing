@@ -50,6 +50,7 @@ export default async function MyTasksPage({ searchParams }: { searchParams: Prom
   const tasks = await db.task.findMany({
     where: {
       AND: [
+        { deletedAt: null },
         role === 'ADMIN' ? {} : { OR: [{ assigneeId: meId }, { createdById: meId }] },
         query ? { title: { contains: query, mode: 'insensitive' } } : {},
         statusFilter ? { status: statusFilter } : {},

@@ -174,7 +174,7 @@ model User {
   id           String    @id @default(cuid())
   name         String
   email        String    @unique
-  passwordHash String
+  passwordHash String?
   role         Role      @default(MEMBER)
   theme        String    @default("dark")
   isActive     Boolean   @default(true)
@@ -282,6 +282,7 @@ model Task {
   dueDate             DateTime?
   completedAt         DateTime?
   eligibleForHandover Boolean      @default(false)
+  deletedAt           DateTime?
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
 
@@ -293,6 +294,7 @@ model Task {
   @@index([status])
   @@index([dueDate])
   @@index([assigneeId])
+  @@index([deletedAt])
 }
 
 model TaskComment {

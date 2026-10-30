@@ -18,7 +18,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const monthEnd = new Date(year, month + 1, 0, 23, 59, 59);
 
   const [tasks, leads] = await Promise.all([
-    db.task.findMany({ where: { dueDate: { gte: monthStart, lte: monthEnd } }, include: { assignee: { select: { name: true } }, project: { select: { name: true } } } }),
+    db.task.findMany({ where: { dueDate: { gte: monthStart, lte: monthEnd }, deletedAt: null }, include: { assignee: { select: { name: true } }, project: { select: { name: true } } } }),
     db.lead.findMany({ where: { nextFollowUp: { gte: monthStart, lte: monthEnd } } }),
   ]);
 

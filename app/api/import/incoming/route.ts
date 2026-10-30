@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
+import { dbUser } from '@/lib/guard';
 import { parseCsv } from '@/lib/ingest';
 import { domainOf } from '@/lib/ingest';
 
@@ -8,17 +9,16 @@ export const dynamic = 'force-dynamic';
 
 // POST { filename, csv, mode: 'preview' | 'commit' }
 export async function POST(req: NextRequest) {
-  const { auth } = await import('@/lib/auth');
-  const session = await auth();
-  if (!session?.user?.id) return Response.json({ ok: false, error: 'Sign in first.' }, { status: 401 });
-  const userId = session.user.id as string;
-  const role = (session.user.role ?? 'MEMBER') as string;
+  const me = await dbUser();
+  if (!me) return Response.json({ ok: false, error: 'Sign in first.' }, { status: 401 });
+  const userId = me.id;
+  const role = me.role;
 
   const bodyJson = (await req.json().catch(() => null)) as { filename?: string; csv?: string; mode?: string } | null;
   if (!bodyJson || typeof bodyJson.csv !== 'string' || bodyJson.csv.length > 2_000_000) {
     return Response.json({ ok: false, error: 'CSV too large or missing.' }, { status: 400 });
   }
-  if (!session || (role !== 'ADMIN' && role !== 'MEMBER')) return Response.json({ ok: false, error: 'Not allowed.' }, { status: 403 });
+  if (!(role === 'ADMIN' || role === 'MEMBER')) return Response.json({ ok: false, error: 'Not allowed.' }, { status: 403 });
 
     const { rows, invalid } = parseCsv(bodyJson.csv);
     if (bodyJson.mode !== 'commit') {

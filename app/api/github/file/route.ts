@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db } from '@/lib/db';
-import { auth } from '@/lib/auth';
+import { dbUser } from '@/lib/guard';
 import { readTextFile, fileSha, commitTextFile, simpleDiff } from '@/lib/github';
 
 export const dynamic = 'force-dynamic';
@@ -11,9 +11,9 @@ function connGuard(role: string) {
 }
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return Response.json({ ok: false, error: 'Sign in first.' }, { status: 401 });
-  if (!connGuard((session.user.role ?? 'MEMBER') as string)) return Response.json({ ok: false, error: 'Not allowed.' }, { status: 403 });
+  const me = await dbUser();
+  if (!me) return Response.json({ ok: false, error: 'Sign in first.' }, { status: 401 });
+  if (!connGuard(me.role)) return Response.json({ ok: false, error: 'Not allowed.' }, { status: 403 });
   const connId = req.nextUrl.searchParams.get('conn') ?? '';
   const path = req.nextUrl.searchParams.get('path') ?? '';
   if (!connId || !path || path.includes('..')) return Response.json({ ok: false, error: 'Missing/invalid params.' }, { status: 400 });
@@ -33,9 +33,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return Response.json({ ok: false, error: 'Sign in first.' }, { status: 401 });
-  if ((session.user.role ?? 'MEMBER') !== 'ADMIN') {
+  const me = await dbUser();
+  if (!me) return Response.json({ ok: false, error: 'Sign in first.' }, { status: 401 });
+  if (me.role !== 'ADMIN') {
     return Response.json({ ok: false, error: 'Only admins can commit files to GitHub.' }, { status: 403 });
   }
   const body = (await req.json().catch(() => null)) as { connId?: string; path?: string; content?: string; message?: string; expectedSha?: string } | null;
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
     const result = await commitTextFile(conn.owner, conn.repo, conn.branch, body.path, body.content, body.message ?? `Corble workspace edit: ${body.path}`, body.expectedSha);
     await db.gitHubConnection.update({ where: { id: conn.id }, data: { lastSha: result.commitSha } });
     await db.activity.create({
-      data: { message: 'GitHub commit', detail: `${conn.owner}/${conn.repo}@${conn.branch} ${body.path} (+${diff.added}/−${diff.removed})`, userId: session.user.id },
+      data: { message: 'GitHub commit', detail: `${conn.owner}/${conn.repo}@${conn.branch} ${body.path} (+${diff.added}/−${diff.removed})`, userId: me.id },
     });
     return Response.json({ ok: true, ...result, diff });
   } catch (e) {

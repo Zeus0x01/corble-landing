@@ -1,5 +1,5 @@
-import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { dbUser } from '@/lib/guard';
 import { readLocalUpload } from '@/lib/storage';
 
 export const runtime = 'nodejs';
@@ -7,8 +7,8 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await auth();
-  if (!session?.user?.id) return new Response('Unauthorized', { status: 401 });
+  const me = await dbUser();
+  if (!me) return new Response('Unauthorized', { status: 401 });
 
   const asset = await db.fileAsset.findUnique({ where: { id } });
   if (!asset) return new Response('Not found', { status: 404 });

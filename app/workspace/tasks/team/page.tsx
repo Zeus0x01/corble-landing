@@ -17,6 +17,7 @@ export default async function TeamTasksPage({ searchParams }: { searchParams: Pr
 
   const tasks = await db.task.findMany({
     where: {
+      deletedAt: null,
       title: query ? { contains: query, mode: 'insensitive' } : undefined,
     },
     orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }],

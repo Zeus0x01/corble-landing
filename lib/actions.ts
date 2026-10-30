@@ -57,7 +57,10 @@ export type ActionResult = { ok: boolean; error?: string; message?: string };
 async function requireUser() {
   const session = await auth();
   if (!session?.user?.id) throw new Error('Unauthorized');
-  return { id: session.user.id as string, role: (session.user.role ?? 'MEMBER') as Role, name: session.user.name ?? '' };
+  // Re-verify from the database: never trust role/isActive claims in the JWT.
+  const dbu = await db.user.findUnique({ where: { id: session.user.id as string }, select: { id: true, role: true, name: true, isActive: true } });
+  if (!dbu || !dbu.isActive) throw new Error('INACTIVE');
+  return { id: dbu.id, role: dbu.role as Role, name: dbu.name ?? '' };
 }
 
 async function requireAdmin() {
@@ -77,6 +80,7 @@ function fail(e: unknown): ActionResult {
   if (e instanceof Error) {
     if (e.message === 'Admins only') return { ok: false, error: 'Only admins can do that.' };
     if (e.message === 'Unauthorized') return { ok: false, error: 'Please sign in again.' };
+    if (e.message === 'INACTIVE') return { ok: false, error: 'Your account has been deactivated by an administrator.' };
   }
   return { ok: false, error: 'Something went wrong. Try again.' };
 }
@@ -468,7 +472,33 @@ export async function deleteTask(raw: unknown): Promise<ActionResult> {
   try {
     const u = await requireUser();
     const id = z.string().min(1).parse(raw);
-    const t = await db.task.delete({ where: { id } });
+    // Soft-delete: comments, handover history and deliverables must survive.
+    const t = await db.task.update({ where: { id }, data: { deletedAt: new Date(), eligibleForHandover: false } });
+    // Resolve pending handover requests safely now the task is gone.
+    const pending = await db.handoverRequest.findMany({
+      where: { taskId: id, status: 'PENDING' },
+      select: { requesterId: true, ownerId: true, requester: { select: { name: true } } },
+    });
+    if (pending.length > 0) {
+      await db.handoverRequest.updateMany({ where: { taskId: id, status: 'PENDING' }, data: { status: 'CANCELLED', decidedAt: new Date() } });
+      for (const r of pending) {
+        for (const partyId of [r.requesterId, r.ownerId]) {
+          if (!partyId || partyId === u.id) continue;
+          await db.notification.create({
+            data: { userId: partyId, type: 'HANDOVER_CANCELLED', title: `Handover request cancelled — task "${t.title}" was deleted`, link: '/workspace/tasks' },
+          });
+          await mailUser(partyId, () => ({
+            eyebrow: 'Corble · Task handover',
+            introName: 'a handover request was automatically cancelled.',
+            message: `Task "${t.title}" was deleted while its handover request was pending.`,
+            body: 'No action is needed — the request no longer applies.',
+            ctaLabel: 'Open tasks →',
+            ctaPath: '/workspace/tasks',
+            footer: FOOTER,
+          }));
+        }
+      }
+    }
     await logActivity(u.id, 'Task deleted', t.title);
     revalidatePath('/workspace/tasks');
     revalidatePath('/workspace');
@@ -550,7 +580,8 @@ export async function addTeamUser(raw: unknown): Promise<ActionResult> {
     const input = userAdminSchema.parse(raw);
     const exists = await db.user.findUnique({ where: { email: input.email } });
     if (exists) return { ok: false, error: 'A user with that email already exists.' };
-    const password = input.password ?? 'CorbleDemo123!';
+    if (!input.password) return { ok: false, error: 'A temporary password (min 8 characters) is required for new team members.' };
+    const password = input.password;
     await db.user.create({
       data: {
         name: input.name,
@@ -572,10 +603,15 @@ export async function deleteTeamUser(raw: unknown): Promise<ActionResult> {
     const u = await requireAdmin();
     const id = z.string().min(1).parse(raw);
     if (id === u.id) return { ok: false, error: 'You cannot remove your own account.' };
-    const user = await db.user.delete({ where: { id } });
-    await logActivity(u.id, 'Team member removed', user.name);
+    // Soft-delete: deactivate instead of destroying history. Password is cleared
+    // and sessions die on the next privileged action via the DB isActive re-check.
+    const user = await db.user.update({
+      where: { id },
+      data: { isActive: false, passwordHash: null },
+    });
+    await logActivity(u.id, 'Team member deactivated', user.name);
     revalidatePath('/workspace/team');
-    return okRes('User removed.');
+    return okRes('Team member deactivated (history preserved).');
   } catch (e) {
     return fail(e);
   }
@@ -1242,6 +1278,9 @@ export async function reviewDeliverable(raw: unknown): Promise<ActionResult> {
     if (version.submittedById === u.id && u.role !== 'ADMIN') {
       return { ok: false, error: 'You cannot review your own submission.' };
     }
+    if (version.submittedById === u.id && u.role === 'ADMIN') {
+      await logActivity(u.id, 'Self-review override (deliverable)', `${version.deliverable.title} v${version.version} — reviewed own submission as admin`);
+    }
     await db.$transaction(async (tx) => {
       await tx.deliverableVersion.update({ where: { id: version.id }, data: { status: input.decision } });
       await tx.deliverable.update({ where: { id: version.deliverableId }, data: { status: input.decision, currentVersion: version.version } });
@@ -1679,6 +1718,9 @@ export async function reviewPhase(raw: unknown): Promise<ActionResult> {
     });
     if (!submission) return { ok: false, error: 'Submission not found.' };
     if (submission.authorId === u.id && u.role !== 'ADMIN') return { ok: false, error: 'You cannot review your own phase submission.' };
+    if (submission.authorId === u.id && u.role === 'ADMIN') {
+      await logActivity(u.id, 'Self-review override (phase)', `${submission.phase.title} v${submission.version} — reviewed own submission as admin`);
+    }
     const approved = input.decision === 'APPROVED';
     await db.$transaction(async (tx) => {
       await tx.phaseSubmission.update({

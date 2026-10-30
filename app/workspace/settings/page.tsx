@@ -13,7 +13,7 @@ export default async function SettingsPage() {
   const [settings, user, stats] = await Promise.all([
     db.settings.upsert({ where: { id: 'global' }, update: {}, create: { id: 'global' } }),
     db.user.findUnique({ where: { id: userId } }),
-    Promise.all([db.lead.count(), db.project.count(), db.task.count(), db.fileAsset.count()]),
+    Promise.all([db.lead.count(), db.project.count(), db.task.count({ where: { deletedAt: null } }), db.fileAsset.count()]),
   ]);
   if (!user) return null;
 

@@ -17,7 +17,7 @@ export default async function OverviewPage() {
     await Promise.all([
       db.lead.groupBy({ by: ['status'], _count: { _all: true }, _sum: { estValue: true } }),
       db.project.count({ where: { status: { in: ['IN_PROGRESS', 'REVIEW'] } } }),
-      db.task.groupBy({ by: ['priority'], where: { status: { not: 'DONE' } }, _count: { _all: true } }),
+      db.task.groupBy({ by: ['priority'], where: { status: { not: 'DONE' }, deletedAt: null }, _count: { _all: true } }),
       db.financeRecord.aggregate({ _sum: { amount: true }, where: { type: 'PAYMENT', status: 'RECEIVED' } }),
       db.financeRecord.aggregate({ _sum: { amount: true }, where: { type: 'EXPENSE' } }),
       db.lead.findMany({ where: { nextFollowUp: { not: null } }, orderBy: { nextFollowUp: 'asc' }, take: 5 }),

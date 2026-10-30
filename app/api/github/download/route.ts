@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db } from '@/lib/db';
-import { auth } from '@/lib/auth';
+import { dbUser } from '@/lib/guard';
 import { listTree, readTextFile, safeRepoPath } from '@/lib/github';
 import { buildZip } from '@/lib/zip';
 
@@ -10,8 +10,8 @@ const MAX_ZIP_BYTES = 20_000_000;
 
 // GET ?conn=..&paths=a.js,b/c.md  → single file stream or ZIP preserving folder structure
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return new Response('Unauthorized', { status: 401 });
+  const session = await dbUser();
+  if (!session) return new Response('Unauthorized', { status: 401 });
   const connId = req.nextUrl.searchParams.get('conn') ?? '';
   const pathsParam = req.nextUrl.searchParams.get('paths') ?? '';
   const dir = req.nextUrl.searchParams.get('dir') ?? '';

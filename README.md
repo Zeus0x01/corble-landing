@@ -73,7 +73,7 @@ npm run db:seed               # demo data incl. admin user
 npm run dev
 ```
 
-Login at `/login` with the seeded admin: `admin@corble.net` / `CorbleDemo123!`.
+Login at `/login` with the seeded admin: `admin@corble.net` plus the password you set in `SEED_ADMIN_PASSWORD` (defaults to a well-known demo password — **development only**, seeding is refused in production).
 
 ## Production — Supabase + Vercel
 
@@ -89,7 +89,8 @@ The database is hosted on **Supabase**.
 3. **Apply the schema from your machine** (one time):
    ```bash
    DATABASE_URL="<pooled-or-direct-url>" npx prisma migrate deploy
-   DATABASE_URL="<direct-url>" npx prisma db seed   # or use tsx: npx tsx prisma/seed.ts
+   # Demo seeding is DEV-ONLY: it refuses to run against production.
+   # For a real team, skip the seed and have the first admin created via /workspace/team after the first login is bootstrapped, or set SEED_ADMIN_PASSWORD and run the seed in a non-production environment against a dev database.
    ```
 4. **On Vercel** (Project → Settings → Environment Variables), add:
    - `DATABASE_URL` → the **pooled** Supabase URL (with `?pgbouncer=true&connection_limit=1`)
@@ -114,7 +115,7 @@ The database is hosted on **Supabase**.
 | nour@corble.net | MEMBER |
 | youssef@corble.net | MEMBER |
 
-Password for all seeded users in development: `CorbleDemo123!` (change after first login — admin can reset any password from `/workspace/team`).
+Password for all seeded users in development: set it in `.env` via `SEED_ADMIN_PASSWORD` (never run the seed against production). Admins can reset any password from `/workspace/team`; deactivated members can no longer sign in.
 
 There is **no public signup** — admins create team members from `/workspace/team`.
 

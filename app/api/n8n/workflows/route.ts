@@ -1,13 +1,13 @@
 import { NextRequest } from 'next/server';
-import { auth } from '@/lib/auth';
+import { dbUser } from '@/lib/guard';
 import { listWorkflows, n8nConfigured, n8nMissing } from '@/lib/n8n';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return Response.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
-  if ((session?.user?.role ?? 'MEMBER') !== 'ADMIN') {
+  const me = await dbUser();
+  if (!me) return Response.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
+  if (me.role !== 'ADMIN') {
     return Response.json({ ok: false, error: 'Forbidden' }, { status: 403 });
   }
   if (!n8nConfigured()) {

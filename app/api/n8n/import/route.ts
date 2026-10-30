@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { auth } from '@/lib/auth';
+import { dbUser } from '@/lib/guard';
 import { db } from '@/lib/db';
 import { createWorkflow, n8nConfigured } from '@/lib/n8n';
 import { readStoredText } from '@/lib/storage';
@@ -10,9 +10,9 @@ export const dynamic = 'force-dynamic';
 const MAX_JSON_CHARS = 800_000;
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return Response.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
-  if ((session?.user?.role ?? 'MEMBER') !== 'ADMIN') {
+  const me = await dbUser();
+  if (!me) return Response.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
+  if (me.role !== 'ADMIN') {
     return Response.json({ ok: false, error: 'Forbidden' }, { status: 403 });
   }
   if (!n8nConfigured()) {
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     if (text.length > MAX_JSON_CHARS) return Response.json({ ok: false, error: 'File too large for import.' }, { status: 413 });
     const created = await createWorkflow(text, body.name);
     await db.activity.create({
-      data: { userId: session.user.id, message: 'n8n workflow imported', detail: `${created.name} -> n8n id ${created.id} (from ${asset.name})` },
+      data: { userId: me.id, message: 'n8n workflow imported', detail: `${created.name} -> n8n id ${created.id} (from ${asset.name})` },
     });
     revalidatePath('/workspace/n8n');
     return Response.json({ ok: true, id: created.id, name: created.name });

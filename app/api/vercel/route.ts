@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db } from '@/lib/db';
-import { auth } from '@/lib/auth';
+import { dbUser } from '@/lib/guard';
 import { latestDeployment, createDeployment, vercelConfigured } from '@/lib/vercel';
 
 export const dynamic = 'force-dynamic';
@@ -11,8 +11,8 @@ async function withConn(projectId: string) {
 }
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return Response.json({ ok: false, error: 'Sign in first.' }, { status: 401 });
+  const me = await dbUser();
+  if (!me) return Response.json({ ok: false, error: 'Sign in first.' }, { status: 401 });
   const projectId = req.nextUrl.searchParams.get('projectId') ?? '';
   const conn = projectId ? await withConn(projectId) : null;
   if (!conn) return Response.json({ ok: true, status: 'NOT_CONFIGURED', setup: 'Connect a project in Workspace → Vercel to enable deployment management.' });
@@ -26,9 +26,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return Response.json({ ok: false, error: 'Sign in first.' }, { status: 401 });
-  if ((session.user.role ?? 'MEMBER') !== 'ADMIN') return Response.json({ ok: false, error: 'Only admins can trigger deployments.' }, { status: 403 });
+  const me = await dbUser();
+  if (!me) return Response.json({ ok: false, error: 'Sign in first.' }, { status: 401 });
+  if (me.role !== 'ADMIN') return Response.json({ ok: false, error: 'Only admins can trigger deployments.' }, { status: 403 });
   const body = (await req.json().catch(() => null)) as { projectId?: string; target?: string; commitSha?: string; confirm?: boolean } | null;
   if (!body?.projectId || (body.target !== 'preview' && body.target !== 'production')) {
     return Response.json({ ok: false, error: 'projectId and target (preview|production) required.' }, { status: 400 });
@@ -55,11 +55,11 @@ export async function POST(req: NextRequest) {
         commitSha: body.commitSha ?? null,
       },
     });
-    await db.activity.create({ data: { message: `Vercel ${body.target} deployment started`, detail: record.id, userId: session.user.id } });
+    await db.activity.create({ data: { message: `Vercel ${body.target} deployment started`, detail: record.id, userId: me.id } });
     return Response.json({ ok: true, vercelId: res.vercelId, url: res.url, status: res.status, recordId: record.id });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Vercel error';
-    await db.activity.create({ data: { message: 'Vercel deployment failed', detail: msg.slice(0, 200), userId: session.user.id } });
+    await db.activity.create({ data: { message: 'Vercel deployment failed', detail: msg.slice(0, 200), userId: me.id } });
     return Response.json({ ok: false, error: msg }, { status: 502 });
   }
 }

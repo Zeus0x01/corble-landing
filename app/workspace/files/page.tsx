@@ -57,7 +57,7 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
       },
     }),
     db.project.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' }, take: 200 }),
-    db.task.findMany({ select: { id: true, title: true, project: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 200 }),
+    db.task.findMany({ where: { deletedAt: null }, select: { id: true, title: true, project: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 200 }),
     db.lead.findMany({ select: { id: true, name: true }, orderBy: { updatedAt: 'desc' }, take: 200 }),
     db.incomingLead.findMany({ select: { id: true, company: true, processingStatus: true }, orderBy: { receivedAt: 'desc' }, take: 200 }),
   ]);

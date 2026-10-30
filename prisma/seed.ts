@@ -4,13 +4,41 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
-  const password = await bcrypt.hash('CorbleDemo123!', 10);
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_SEED !== 'true') {
+    throw new Error(
+      'Refusing to seed: NODE_ENV is production. Demo data must never be created in production. Set ALLOW_SEED=true ONLY if you truly understand the risk.'
+    );
+  }
+  const rawPassword = process.env.SEED_ADMIN_PASSWORD || 'CorbleDemo123!';
+  if (process.env.NODE_ENV === 'production' && rawPassword === 'CorbleDemo123!') {
+    throw new Error('Refusing to seed with the known demo password in production. Set SEED_ADMIN_PASSWORD to something unique.');
+  }
+  const password = await bcrypt.hash(rawPassword, 10);
 
+  // Children before parents so re-runs and FK constraints never fail.
   await prisma.activity.deleteMany();
-  await prisma.fileAsset.deleteMany();
+  await prisma.notification.deleteMany();
+  await prisma.fileLeadLink.deleteMany();
+  await prisma.deliverableReview.deleteMany();
+  await prisma.deliverableVersion.deleteMany();
+  await prisma.deliverable.deleteMany();
+  await prisma.phaseSubmission.deleteMany();
+  await prisma.automationPhase.deleteMany();
+  await prisma.automationProject.deleteMany();
+  await prisma.leadVerificationCheck.deleteMany();
+  await prisma.leadResearchUpdate.deleteMany();
+  await prisma.incomingLead.deleteMany();
+  await prisma.ingestionRun.deleteMany();
+  await prisma.leadImportBatch.deleteMany();
+  await prisma.handoverRequest.deleteMany();
+  await prisma.taskComment.deleteMany();
   await prisma.financeRecord.deleteMany();
   await prisma.task.deleteMany();
+  await prisma.gitHubConnection.deleteMany();
+  await prisma.deploymentRecord.deleteMany();
+  await prisma.deploymentConnection.deleteMany();
   await prisma.project.deleteMany();
+  await prisma.fileAsset.deleteMany();
   await prisma.lead.deleteMany();
   await prisma.template.deleteMany();
   await prisma.settings.deleteMany();
@@ -281,7 +309,7 @@ async function main() {
     ],
   });
 
-  console.log('Seed complete: admin admin@corble.net / CorbleDemo123!');
+  console.log(`Seed complete: admin admin@corble.net / ${process.env.SEED_ADMIN_PASSWORD ? 'password from SEED_ADMIN_PASSWORD' : 'default demo password (dev only!)'}`);
 }
 
 main()

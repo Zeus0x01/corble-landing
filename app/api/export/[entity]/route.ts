@@ -1,5 +1,5 @@
-import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { dbUser } from '@/lib/guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,8 +16,8 @@ function csv(rows: (string | number | null)[][]): string {
 
 export async function GET(_req: Request, { params }: { params: Promise<{ entity: string }> }) {
   const { entity } = await params;
-  const session = await auth();
-  if (!session?.user?.id) return new Response('Unauthorized', { status: 401 });
+  const me = await dbUser();
+  if (!me) return new Response('Unauthorized', { status: 401 });
 
   let rows: (string | number | null)[][] = [];
   let filename = 'export.csv';
@@ -60,6 +60,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ entity:
     filename = 'projects.csv';
   } else if (entity === 'tasks') {
     const data = await db.task.findMany({
+      where: { deletedAt: null },
       include: { assignee: { select: { name: true } }, project: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     });
