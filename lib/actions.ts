@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { after } from 'next/server';
+import { randomBytes } from 'crypto';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
@@ -2039,9 +2040,14 @@ export async function connectGithub(raw: unknown): Promise<ActionResult> {
     const u = await requireUser();
     const input = githubConnectSchema.parse(raw);
     if (u.role !== 'ADMIN') return { ok: false, error: 'Only admins can connect GitHub repos.' };
-    const { repoExists } = await import('@/lib/github');
+    const { repoExists, repoDetails, latestCommit, detectFramework, registerPushWebhook } = await import('@/lib/github');
     const check = await repoExists(input.owner, input.repo);
     if (!check.ok) return { ok: false, error: `GitHub says no access to ${input.owner}/${input.repo} (status ${check.status ?? 'unknown'}). Check GITHUB_TOKEN and repo casing.` };
+    const alreadyConnected = await db.gitHubConnection.findFirst({
+      where: { owner: input.owner, repo: input.repo, ...(input.projectId ? { NOT: { projectId: input.projectId } } : {}) },
+      select: { project: { select: { name: true } } },
+    });
+    if (alreadyConnected) return { ok: false, error: `This repository is already connected${alreadyConnected.project?.name ? ` to "${alreadyConnected.project.name}"` : ''}.` };
 
     // Resolve target project: explicit pick, else attach an unlinked project, else auto-create one for the repo.
     let projectId = input.projectId && input.projectId !== 'auto' ? input.projectId : null;
@@ -2066,6 +2072,22 @@ export async function connectGithub(raw: unknown): Promise<ActionResult> {
       create: { projectId, owner: input.owner, repo: input.repo, branch: input.branch, repoId: check.id ? String(check.id) : null, connectedById: u.id, status: 'connected' },
       update: { owner: input.owner, repo: input.repo, branch: input.branch, repoId: check.id ? String(check.id) : null, connectedById: u.id, status: 'connected' },
     });
+    const [details, commit, framework] = await Promise.all([
+      repoDetails(input.owner, input.repo),
+      latestCommit(input.owner, input.repo, input.branch),
+      detectFramework(input.owner, input.repo, input.branch),
+    ]);
+    await db.gitHubConnection.update({
+      where: { id: conn.id },
+      data: {
+        repoId: String(details.id),
+        lastSha: commit.sha,
+        latestCommitMessage: commit.message,
+        latestCommitUrl: commit.htmlUrl,
+        latestCommitAt: commit.committedAt ? new Date(commit.committedAt) : null,
+        framework,
+      },
+    });
     // Auto-wire Vercel so the site is immediately deployable from the Deployments tab.
     const { vercelConfigured, ensureVercelProject, slugifyVercelName } = await import('@/lib/vercel');
     let deployNote = '';
@@ -2081,6 +2103,40 @@ export async function connectGithub(raw: unknown): Promise<ActionResult> {
         } else {
           deployNote = ' Could not auto-link a Vercel project (API refused) — configure it manually in the Deployments tab.';
         }
+      }
+      const currentConn = await db.deploymentConnection.findUnique({ where: { projectId }, select: { vercelProjectId: true, vercelTeamId: true } });
+      if (currentConn) {
+        try {
+          const { createDeployment } = await import('@/lib/vercel');
+          const preview = await createDeployment(currentConn.vercelProjectId, currentConn.vercelTeamId ?? undefined, 'preview', {
+            repo: `${input.owner}/${input.repo}`,
+            ref: input.branch,
+            message: 'Automatic preview deployment after GitHub connection',
+          });
+          await db.deploymentRecord.create({
+            data: {
+              projectId,
+              vercelId: preview.vercelId,
+              environment: 'preview',
+              status: preview.status as 'QUEUED' | 'BUILDING' | 'LIVE' | 'FAILED' | 'CANCELLED',
+              url: preview.url ?? null,
+              commitSha: commit.sha,
+            },
+          });
+          deployNote += ` Preview deployment started${preview.url ? `: ${preview.url}` : '.'}`;
+        } catch (error) {
+          deployNote += ` Preview deployment failed: ${error instanceof Error ? error.message.slice(0, 180) : 'Vercel error'}`;
+        }
+      }
+    }
+    const appUrl = process.env.APP_URL || process.env.AUTH_URL || process.env.NEXTAUTH_URL || '';
+    if (/^https:\/\//i.test(appUrl) && !conn.webhookId) {
+      try {
+        const secret = randomBytes(32).toString('hex');
+        const webhookId = await registerPushWebhook(input.owner, input.repo, `${appUrl.replace(/\/$/, '')}/api/github/webhook`, secret);
+        await db.gitHubConnection.update({ where: { id: conn.id }, data: { webhookId, webhookSecret: secret } });
+      } catch (error) {
+        deployNote += ` GitHub push sync could not be enabled: ${error instanceof Error ? error.message.slice(0, 160) : 'webhook error'}`;
       }
     }
     await logActivity(u.id, 'GitHub repo connected', `${input.owner}/${input.repo} (${conn.branch})${deployNote}`);

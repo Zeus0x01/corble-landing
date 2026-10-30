@@ -72,6 +72,93 @@ export interface GhRepoMeta {
   updatedAt: string;
 }
 
+export interface GhRepoDetails {
+  id: number;
+  fullName: string;
+  name: string;
+  owner: string;
+  defaultBranch: string;
+  htmlUrl: string;
+  updatedAt: string;
+}
+
+export interface GhCommitDetails {
+  sha: string;
+  message: string;
+  htmlUrl: string;
+  committedAt: string | null;
+}
+
+export async function repoDetails(owner: string, repo: string): Promise<GhRepoDetails> {
+  const r = await ghJson<{
+    id: number;
+    full_name: string;
+    name: string;
+    owner: { login: string };
+    default_branch: string;
+    html_url: string;
+    updated_at: string;
+  }>(`/repos/${owner}/${repo}`);
+  return {
+    id: r.id,
+    fullName: r.full_name,
+    name: r.name,
+    owner: r.owner.login,
+    defaultBranch: r.default_branch || 'main',
+    htmlUrl: r.html_url,
+    updatedAt: r.updated_at,
+  };
+}
+
+export async function latestCommit(owner: string, repo: string, branch: string): Promise<GhCommitDetails> {
+  const r = await ghJson<Array<{
+    sha: string;
+    html_url: string;
+    commit: { message: string; committer?: { date?: string | null } | null };
+  }>>(`/repos/${owner}/${repo}/commits?sha=${encodeURIComponent(branch)}&per_page=1`);
+  const commit = r[0];
+  if (!commit) throw new Error('GITHUB latest commit not found');
+  return {
+    sha: commit.sha,
+    message: commit.commit.message.split('\n')[0].slice(0, 240),
+    htmlUrl: commit.html_url,
+    committedAt: commit.commit.committer?.date ?? null,
+  };
+}
+
+export async function detectFramework(owner: string, repo: string, branch: string): Promise<string | null> {
+  try {
+    const meta = await ghJson<{ name: string }[]>(`/repos/${owner}/${repo}/contents?ref=${encodeURIComponent(branch)}`);
+    const names = new Set(meta.map((entry) => entry.name.toLowerCase()));
+    if (names.has('next.config.js') || names.has('next.config.mjs') || names.has('next.config.ts')) return 'Next.js';
+    if (names.has('vite.config.js') || names.has('vite.config.ts')) return 'Vite';
+    if (names.has('angular.json')) return 'Angular';
+    if (names.has('nuxt.config.ts') || names.has('nuxt.config.js')) return 'Nuxt';
+    if (names.has('astro.config.mjs') || names.has('astro.config.ts')) return 'Astro';
+    if (names.has('package.json')) return 'Node.js';
+    if (names.has('manage.py')) return 'Django';
+    if (names.has('requirements.txt')) return 'Python';
+    return null;
+  } catch {
+    return null;
+  }
+
+}
+
+export async function registerPushWebhook(owner: string, repo: string, callbackUrl: string, secret: string): Promise<string> {
+  const out = await ghJson<{ id: number }>(`/repos/${owner}/${repo}/hooks`, {
+    method: 'POST',
+    body: JSON.stringify({
+      name: 'web',
+      active: true,
+      events: ['push'],
+      config: { url: callbackUrl, content_type: 'json', secret, insecure_ssl: '0' },
+    }),
+    headers: { 'content-type': 'application/json' },
+  });
+  return String(out.id);
+}
+
 export async function listRepos(): Promise<GhRepoMeta[]> {
   const out = await ghJson<Array<{
     id: number;

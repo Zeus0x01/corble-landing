@@ -17,6 +17,8 @@ export interface VercelDeployment {
   target?: string | null;
   meta?: Record<string, string>;
   created_at?: number;
+  errorCode?: string;
+  errorMessage?: string;
 }
 
 function mapState(d: VercelDeployment): 'QUEUED' | 'BUILDING' | 'LIVE' | 'FAILED' | 'CANCELLED' {
@@ -28,9 +30,10 @@ function mapState(d: VercelDeployment): 'QUEUED' | 'BUILDING' | 'LIVE' | 'FAILED
   return 'BUILDING';
 }
 
-export async function latestDeployment(vercelProjectId: string, vercelTeamId?: string) {
+export async function latestDeployment(vercelProjectId: string, vercelTeamId?: string, target?: 'preview' | 'production') {
   if (!vercelConfigured()) throw new Error('NOT_CONFIGURED');
-  const res = await fetch(`https://api.vercel.com/v6/deployments?projectId=${encodeURIComponent(vercelProjectId)}&limit=1${team(vercelTeamId)}`, {
+  const targetQuery = target ? `&target=${target}` : '';
+  const res = await fetch(`https://api.vercel.com/v6/deployments?projectId=${encodeURIComponent(vercelProjectId)}&limit=1${targetQuery}${team(vercelTeamId)}`, {
     headers: { authorization: `Bearer ${process.env.VERCEL_TOKEN}` },
     cache: 'no-store',
   });
@@ -44,6 +47,7 @@ export async function latestDeployment(vercelProjectId: string, vercelTeamId?: s
     commitSha: dep.meta?.githubCommitSha ?? dep.meta?.gitCommitSha ?? null,
     environment: dep.target === 'production' ? ('production' as const) : ('preview' as const),
     vercelId: dep.id,
+    errorSummary: dep.errorMessage ?? dep.errorCode ?? null,
   };
 }
 

@@ -586,6 +586,12 @@ model GitHubConnection {
   branch        String    @default("main")
   repoId        String?
   lastSha       String?
+  latestCommitMessage String?
+  latestCommitUrl String?
+  latestCommitAt DateTime?
+  framework     String?
+  webhookId     String?
+  webhookSecret String?
   status        String    @default("connected")
   connectedById String?
   connectedBy   User?     @relation("GitHubConnector", fields: [connectedById], references: [id], onDelete: SetNull)
