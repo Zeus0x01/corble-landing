@@ -10,13 +10,6 @@ export default async function TeamTasksPage({ searchParams }: { searchParams: Pr
   const session = await auth();
   const meId = session?.user?.id as string;
   const role = (session?.user?.role ?? 'MEMBER') as string;
-  if (role !== 'ADMIN') {
-    return (
-      <div className="empty">
-        Team Tasks is available to administrators only. Use <a href="/workspace/tasks">My Tasks</a> for your assigned work.
-      </div>
-    );
-  }
   const sp = await searchParams;
   const query = (sp.q ?? '').trim();
   const reason = sp.reason ?? 'all';
@@ -87,7 +80,12 @@ export default async function TeamTasksPage({ searchParams }: { searchParams: Pr
       <div className="viewhead">
         <div>
           <h2>Team tasks</h2>
-          <div className="sub">Overdue, claimable and handover-in-progress work across the team. {rows.length} visible.</div>
+          <div className="sub">
+            {role === 'ADMIN'
+              ? 'Overdue, claimable and handover-in-progress work across the team.'
+              : 'Request a handover on tasks offered for assistance.'}{' '}
+            {rows.length} visible.
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <a className="btn" href="/workspace/tasks/team?reason=overdue">Overdue</a>
