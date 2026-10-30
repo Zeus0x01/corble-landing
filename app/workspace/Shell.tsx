@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
 import { saveMyTheme } from '@/lib/actions';
 import Topbar from './Topbar';
@@ -19,6 +19,7 @@ type ShellProps = {
 
 export default function Shell({ children, user, companyName, currency }: ShellProps) {
   const pathname = usePathname();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const toast = useCallback<ToastFn>((msg, kind = 'ok') => {
     const el = document.createElement('div');
     el.className = `toast-item${kind === 'err' ? ' err' : ''}`;
@@ -45,6 +46,19 @@ export default function Shell({ children, user, companyName, currency }: ShellPr
     };
   }, [user.theme]);
 
+  useEffect(() => {
+    const saved = window.localStorage.getItem('corble.sidebarCollapsed');
+    if (saved !== null) setSidebarCollapsed(saved === 'true');
+  }, []);
+
+  function toggleSidebar() {
+    setSidebarCollapsed((collapsed) => {
+      const next = !collapsed;
+      window.localStorage.setItem('corble.sidebarCollapsed', String(next));
+      return next;
+    });
+  }
+
   async function toggleTheme() {
     const root = document.documentElement;
     const next = root.dataset.theme === 'light' ? 'dark' : 'light';
@@ -54,11 +68,11 @@ export default function Shell({ children, user, companyName, currency }: ShellPr
 
   return (
     <ToastCtx.Provider value={toast}>
-      <div className="wsapp" id="wsapp">
+      <div className={`wsapp${sidebarCollapsed ? ' sidebar-collapsed' : ''}`} id="wsapp">
         <Sidebar role={user.role} />
         <div className="sidebar-backdrop" id="sidebarBackdrop" aria-hidden="true" />
         <div style={{ position: 'relative', minWidth: 0, display: 'grid' }}>
-          <Topbar pathname={pathname} user={user} companyName={companyName} currency={currency} onToggleTheme={toggleTheme} />
+          <Topbar pathname={pathname} user={user} companyName={companyName} currency={currency} onToggleTheme={toggleTheme} onToggleSidebar={toggleSidebar} sidebarCollapsed={sidebarCollapsed} />
           <main className="wsmain" id="wsmain">
             {children}
           </main>

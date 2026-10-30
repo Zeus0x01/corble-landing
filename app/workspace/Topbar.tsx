@@ -11,6 +11,8 @@ type Props = {
   companyName: string;
   currency: string;
   onToggleTheme: () => void;
+  onToggleSidebar: () => void;
+  sidebarCollapsed: boolean;
 };
 
 const TITLES: Record<string, [string, string]> = {
@@ -35,7 +37,7 @@ const TITLES: Record<string, [string, string]> = {
   '/workspace/settings': ['Settings', 'Company, currency, timezone, appearance.'],
 };
 
-export default function Topbar({ pathname, user, companyName, currency, onToggleTheme }: Props) {
+export default function Topbar({ pathname, user, companyName, currency, onToggleTheme, onToggleSidebar, sidebarCollapsed }: Props) {
   const router = useRouter();
   const [q, setQ] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -152,6 +154,9 @@ export default function Topbar({ pathname, user, companyName, currency, onToggle
           ⏻
         </button>
         <button className="btn sq ws-burger" onClick={toggleSidebar} aria-label="Toggle menu" title="Menu">≡</button>
+        <button className="btn sq sidebar-toggle" onClick={onToggleSidebar} aria-label={sidebarCollapsed ? 'Open sidebar' : 'Close sidebar'} title={sidebarCollapsed ? 'Open sidebar' : 'Close sidebar'}>
+          {sidebarCollapsed ? '»' : '«'}
+        </button>
       </div>
     </div>
   );
