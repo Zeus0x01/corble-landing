@@ -55,7 +55,7 @@ export async function createDeployment(
   vercelProjectId: string,
   vercelTeamId: string | undefined,
   target: 'preview' | 'production',
-  opts: { repo?: string; ref?: string; message?: string } = {}
+  opts: { repo?: string; repoId?: string | number; ref?: string; message?: string } = {}
 ): Promise<{ vercelId: string; url?: string; status: string }> {
   if (!vercelConfigured()) throw new Error('NOT_CONFIGURED');
   const qs = team(vercelTeamId);
@@ -64,14 +64,18 @@ export async function createDeployment(
     projectId?: string;
     target?: string;
     meta?: Record<string, string>;
-    gitSource?: { type: string; repo: string; ref: string };
+    gitSource?: { type: string; repoId: number; ref: string };
   } = { target: target === 'production' ? 'production' : undefined };
   if (opts.message || opts.repo) {
     payload.meta = { ...(opts.message ? { githubCommitMessage: opts.message } : {}) };
   }
   if (opts.repo) {
+    const repoId = Number(opts.repoId);
+    if (!Number.isSafeInteger(repoId) || repoId <= 0) {
+      throw new Error('VERCEL_REPO_ID_MISSING: reconnect the GitHub repository to refresh its repository ID.');
+    }
     payload.projectId = vercelProjectId;
-    payload.gitSource = { type: 'github', repo: opts.repo, ref: opts.ref ?? 'main' };
+    payload.gitSource = { type: 'github', repoId, ref: opts.ref ?? 'main' };
   }
   const res = await fetch(`${API}/deployments${qs ? `?${qs.replace('&', '')}` : ''}`, {
     method: 'POST',

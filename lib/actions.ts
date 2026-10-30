@@ -2110,6 +2110,7 @@ export async function connectGithub(raw: unknown): Promise<ActionResult> {
           const { createDeployment } = await import('@/lib/vercel');
           const preview = await createDeployment(currentConn.vercelProjectId, currentConn.vercelTeamId ?? undefined, 'preview', {
             repo: `${input.owner}/${input.repo}`,
+            repoId: check.id,
             ref: input.branch,
             message: 'Automatic preview deployment after GitHub connection',
           });
@@ -2201,7 +2202,7 @@ export async function deployProject(raw: unknown): Promise<ActionResult> {
     if (u.role !== 'ADMIN') return { ok: false, error: 'Only admins can trigger deploys.' };
     const conn = await db.deploymentConnection.findUnique({ where: { projectId: input.projectId }, include: { project: { select: { name: true } } } });
     if (!conn) return { ok: false, error: 'No Vercel project connected for this site yet.' };
-    const gh = await db.gitHubConnection.findUnique({ where: { projectId: input.projectId }, select: { owner: true, repo: true, branch: true } });
+    const gh = await db.gitHubConnection.findUnique({ where: { projectId: input.projectId }, select: { owner: true, repo: true, branch: true, repoId: true } });
     if (!gh) return { ok: false, error: 'Connect the GitHub repo first (Websites tab) — deploys build from it.' };
     if (input.production) {
       const proceed = (raw as { confirm?: boolean }).confirm;
@@ -2209,10 +2210,18 @@ export async function deployProject(raw: unknown): Promise<ActionResult> {
     }
     const { createDeployment, vercelConfigured } = await import('@/lib/vercel');
     if (!vercelConfigured()) return { ok: false, error: 'VERCEL_TOKEN is not configured in this environment.' };
+    let repoId = gh.repoId;
+    if (!repoId) {
+      const { repoDetails } = await import('@/lib/github');
+      const details = await repoDetails(gh.owner, gh.repo);
+      repoId = String(details.id);
+      await db.gitHubConnection.update({ where: { projectId: input.projectId }, data: { repoId } });
+    }
     let out: { vercelId: string; url?: string; status: string };
     try {
       out = await createDeployment(conn.vercelProjectId, conn.vercelTeamId ?? undefined, input.production ? 'production' : 'preview', {
         repo: `${gh.owner}/${gh.repo}`,
+        repoId,
         ref: gh.branch,
         message: `${input.production ? 'Production' : 'Preview'} deploy fired from Corble workspace`,
       });

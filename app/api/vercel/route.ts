@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { db } from '@/lib/db';
 import { dbUser } from '@/lib/guard';
+import { repoDetails } from '@/lib/github';
 import { latestDeployment, createDeployment, vercelConfigured } from '@/lib/vercel';
 
 export const dynamic = 'force-dynamic';
@@ -35,14 +36,20 @@ export async function POST(req: NextRequest) {
   }
   const conn = await withConn(body.projectId);
   if (!conn) return Response.json({ ok: true, status: 'NOT_CONFIGURED', setup: 'Connect this project first.' });
-  const gh = await db.gitHubConnection.findUnique({ where: { projectId: body.projectId }, select: { owner: true, repo: true, branch: true } });
+  const gh = await db.gitHubConnection.findUnique({ where: { projectId: body.projectId }, select: { owner: true, repo: true, branch: true, repoId: true } });
   if (!gh) return Response.json({ ok: false, error: 'Connect the GitHub repo first (Websites tab) — deploys build from it.' }, { status: 409 });
   if (body.target === 'production' && body.confirm !== true) {
     return Response.json({ ok: false, error: 'Production deployments require confirm: true.' }, { status: 400 });
   }
   try {
+    let repoId = gh.repoId;
+    if (!repoId) {
+      repoId = String((await repoDetails(gh.owner, gh.repo)).id);
+      await db.gitHubConnection.update({ where: { projectId: body.projectId }, data: { repoId } });
+    }
     const res = await createDeployment(conn.vercelProjectId, conn.vercelTeamId ?? undefined, body.target, {
       repo: `${gh.owner}/${gh.repo}`,
+      repoId,
       ref: body.commitSha ?? gh.branch,
     });
     const record = await db.deploymentRecord.create({

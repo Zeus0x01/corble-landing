@@ -67,22 +67,21 @@ export default function GitHubBrowser({ conn, admin }: { conn: Conn; admin: bool
   const up = dir ? dir.split('/').slice(0, -1).join('/') : null;
 
   return (
-    <div style={{ marginTop: 10 }}>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <strong>{conn.owner}/{conn.repo}</strong>
-        <span className="pill">{conn.branch}</span>
+    <div className="repo-browser">
+      <div className="repo-browser-head">
+        <div className="repo-browser-title"><span className="repo-mark">⌘</span>{conn.owner}/{conn.repo} <span className="pill">{conn.branch}</span></div>
         {conn.projectName ? <span className="itemsub">site: {conn.projectName}</span> : null}
         <a className="btn" href={`/api/github/download?conn=${conn.id}&dir=${encodeURIComponent(dir)}`} target="_blank" rel="noopener noreferrer">⇩ ZIP current dir</a>
       </div>
 
-      <div style={{ display: 'flex', gap: 6, margin: '8px 0', alignItems: 'center', flexWrap: 'wrap' }}>
+      <div className="repo-toolbar">
         <button className="btn" disabled={busy} onClick={() => browse('')}>Home</button>
         {up !== null && up !== dir ? <button className="btn" disabled={busy} onClick={() => browse(up)}>↑ Up</button> : null}
         <span className="pill">path: /{dir}</span>
         {busy ? <span className="pill">loading…</span> : null}
       </div>
 
-      <div className="tablewrap">
+      <div className="repo-tree">
         <table className="table">
           <tbody>
             {entries === null && !busy ? (

@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 import { NextRequest } from 'next/server';
 import { db } from '@/lib/db';
+import { repoDetails } from '@/lib/github';
 import { createDeployment } from '@/lib/vercel';
 
 export const dynamic = 'force-dynamic';
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest) {
 
   const connection = await db.gitHubConnection.findFirst({
     where: { owner, repo },
-    select: { id: true, projectId: true, branch: true, webhookSecret: true },
+    select: { id: true, projectId: true, branch: true, repoId: true, webhookSecret: true },
   });
   if (!connection?.webhookSecret) return Response.json({ ok: false, error: 'Webhook is not registered.' }, { status: 404 });
   if (!validSignature(raw, req.headers.get('x-hub-signature-256'), connection.webhookSecret)) {
@@ -51,8 +52,14 @@ export async function POST(req: NextRequest) {
   if (!deployment) return Response.json({ ok: true, synced: true, deployed: false });
 
   try {
+    let repoId = connection.repoId;
+    if (!repoId) {
+      repoId = String((await repoDetails(owner, repo)).id);
+      await db.gitHubConnection.update({ where: { id: connection.id }, data: { repoId } });
+    }
     const out = await createDeployment(deployment.vercelProjectId, deployment.vercelTeamId ?? undefined, 'preview', {
       repo: `${owner}/${repo}`,
+      repoId,
       ref: branch,
       message: `Automatic preview deployment for ${commit.id.slice(0, 7)}`,
     });

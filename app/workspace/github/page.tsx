@@ -48,18 +48,22 @@ export default async function GitHubPage() {
         </div>
       ) : (
         connections.map((c) => (
-          <div key={c.id} className="tablewrap" style={{ marginBottom: 16 }}>
-            <div style={{ padding: '12px 0', display: 'grid', gap: 4 }}>
-              <strong>{c.owner}/{c.repo}</strong>
-              <div className="itemsub">
+          <div key={c.id} className="repo-card">
+            <div className="repo-card-head">
+              <div>
+                <div className="repo-title"><span className="repo-mark">◈</span>{c.owner}/{c.repo}</div>
+                <div className="repo-meta">
                 <a href={`https://github.com/${c.owner}/${c.repo}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--purple)' }}>GitHub repository ↗</a>
-                {' · '}branch: {c.branch}{c.framework ? ` · framework: ${c.framework}` : ''}
-              </div>
-              {c.latestCommitMessage ? (
-                <div className="itemsub">
-                  latest commit: {c.latestCommitMessage}{c.latestCommitUrl ? <> · <a href={c.latestCommitUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--purple)' }}>view ↗</a></> : null}
+                <span className="repo-dot">·</span><span>branch: {c.branch}</span>{c.framework ? <><span className="repo-dot">·</span><span>{c.framework}</span></> : null}
                 </div>
-              ) : null}
+              </div>
+              <span className="pill connected">connected</span>
+            </div>
+            <div className="repo-commit">
+              <span className="repo-commit-label">Latest commit</span>
+              {c.latestCommitMessage ? (
+                <span>{c.latestCommitMessage}{c.latestCommitUrl ? <> · <a href={c.latestCommitUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--purple)' }}>view ↗</a></> : null}</span>
+              ) : <span className="itemsub">No commit metadata yet</span>}
             </div>
             <GitHubBrowser conn={{ id: c.id, owner: c.owner, repo: c.repo, branch: c.branch, projectName: c.project?.name }} admin={admin} />
             {admin ? (
