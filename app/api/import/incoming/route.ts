@@ -118,6 +118,7 @@ export async function POST(req: NextRequest) {
     return await postImport(req);
   } catch (error) {
     console.error('[incoming-lead-import] failed:', error);
-    return Response.json({ ok: false, error: 'The CSV import could not be completed. Check the server logs for details.' }, { status: 500 });
+    const detail = error instanceof Error ? error.message : 'Unknown server error';
+    return Response.json({ ok: false, error: `CSV import failed: ${detail}` }, { status: 500 });
   }
 }
