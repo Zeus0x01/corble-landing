@@ -62,7 +62,7 @@ export async function createDeployment(
   // v13 deployments: bind to the project at the top level; gitSource carries the repo + ref.
   const payload: {
     name?: string;
-    projectId?: string;
+    project?: string;
     target?: string;
     meta?: Record<string, string>;
     gitSource?: { type: string; repoId: number; ref: string };
@@ -77,7 +77,7 @@ export async function createDeployment(
     }
     const repoName = opts.repo.split('/').pop() ?? opts.repo;
     payload.name = slugify(repoName);
-    payload.projectId = vercelProjectId;
+    payload.project = vercelProjectId;
     payload.gitSource = { type: 'github', repoId, ref: opts.ref ?? 'main' };
   }
   const res = await fetch(`${API}/deployments${qs ? `?${qs.replace('&', '')}` : ''}`, {
