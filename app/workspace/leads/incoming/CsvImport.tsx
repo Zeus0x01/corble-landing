@@ -20,7 +20,29 @@ export default function CsvImport() {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ mode, filename, csv }),
     });
-    return (await res.json()) as PreviewRes & CommitRes;
+    const text = await res.text();
+    let payload: Partial<PreviewRes & CommitRes> = {};
+    if (text) {
+      try {
+        payload = JSON.parse(text) as Partial<PreviewRes & CommitRes>;
+      } catch {
+        throw new Error(`Import endpoint returned invalid data (HTTP ${res.status}).`);
+      }
+    }
+    if (!res.ok) throw new Error(payload.error ?? `Import failed (HTTP ${res.status}).`);
+    return payload as PreviewRes & CommitRes;
+  }
+
+  async function runImport(mode: 'preview' | 'commit') {
+    setBusy(true);
+    try {
+      return await post(mode);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Import failed.', 'err');
+      return null;
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function pick(files: FileList | null) {
@@ -69,9 +91,8 @@ export default function CsvImport() {
             className="btn"
             disabled={busy || (preview.valid?.length ?? 0) === 0}
             onClick={async () => {
-              setBusy(true);
-              const res = await post('commit');
-              setBusy(false);
+              const res = await runImport('commit');
+              if (!res) return;
               if (res.ok) {
                 toast(`Imported ${res.created ?? 0} new · ${res.duplicates ?? 0} duplicates · ${res.invalid ?? 0} invalid`, 'ok');
                 setPreview(null);
@@ -91,9 +112,8 @@ export default function CsvImport() {
           className="btn"
           disabled={busy}
           onClick={async () => {
-            setBusy(true);
-            const res = await post('preview');
-            setBusy(false);
+            const res = await runImport('preview');
+            if (!res) return;
             if (res.ok) {
               setPreview(res);
               toast(`Preview: ${res.total ?? 0} rows parsed — review, then commit.`, 'ok');

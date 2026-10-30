@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 // POST { filename, csv, mode: 'preview' | 'commit' } — imports research-sourced contacts into Final Leads.
 const SERVICE_DEFAULT = 'Website';
 
-export async function POST(req: NextRequest) {
+async function postImport(req: NextRequest) {
   const me = await dbUser();
   if (!me) return Response.json({ ok: false, error: 'Sign in first.' }, { status: 401 });
   const userId = me.id;
@@ -97,4 +97,13 @@ export async function POST(req: NextRequest) {
     data: { message: 'Final leads CSV import', detail: `${toCreate.length} created, ${mapped.length - toCreate.length} duplicates, ${invalid.length} invalid`, userId },
   });
   return Response.json({ ok: true, created: toCreate.length, duplicates: mapped.length - toCreate.length, invalid: invalid.length });
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    return await postImport(req);
+  } catch (error) {
+    console.error('[final-lead-import] failed:', error);
+    return Response.json({ ok: false, error: 'The CSV import could not be completed. Check the server logs for details.' }, { status: 500 });
+  }
 }

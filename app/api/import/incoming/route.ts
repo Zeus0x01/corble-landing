@@ -9,7 +9,7 @@ import { allocateLeadCodes } from '@/lib/lead-id';
 export const dynamic = 'force-dynamic';
 
 // POST { filename, csv, mode: 'preview' | 'commit' }
-export async function POST(req: NextRequest) {
+async function postImport(req: NextRequest) {
   const me = await dbUser();
   if (!me) return Response.json({ ok: false, error: 'Sign in first.' }, { status: 401 });
   const userId = me.id;
@@ -111,4 +111,13 @@ export async function POST(req: NextRequest) {
       data: { message: 'CSV import committed', detail: `${batch.filename}: ${createdCount} new, ${dupCount} duplicates, ${invalid.length} invalid`, userId },
     });
     return Response.json({ ok: true, mode: 'committed', created: createdCount, duplicates: dupCount, invalid: invalid.length, batchId: batch.id });
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    return await postImport(req);
+  } catch (error) {
+    console.error('[incoming-lead-import] failed:', error);
+    return Response.json({ ok: false, error: 'The CSV import could not be completed. Check the server logs for details.' }, { status: 500 });
+  }
 }
