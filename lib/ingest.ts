@@ -103,7 +103,7 @@ export interface CsvLead {
 const normHeader = (h: string) => h.trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
 
 const CSV_ALIASES: Record<keyof Omit<CsvLead, 'error'>, string[]> = {
-  company: ['company', 'company name', 'name', 'business', 'business name', 'organization', 'organisation'],
+  company: ['company', 'company name', 'name', 'business', 'business name', 'organization', 'organisation', 'title', 'business title', 'place name', 'listing'],
   contactPerson: ['contact person', 'contact', 'contact name', 'person', 'owner'],
   email: ['email', 'e mail', 'mail', 'email address', 'email1'],
   phone: ['phone', 'tel', 'telephone', 'mobile', 'phone number', 'whatsapp'],
@@ -123,10 +123,15 @@ export function parseCsv(csv: string): { rows: CsvLead[]; invalid: CsvLead[] } {
   const colFor = new Map<keyof Omit<CsvLead, 'error'>, number>();
   const used = new Set<number>();
   for (const f of fieldsOrder) {
-    const j = headers.findIndex((h) => CSV_ALIASES[f].includes(h));
-    if (j >= 0 && !used.has(j)) {
-      colFor.set(f, j);
-      used.add(j);
+    // Alias-priority match: the first alias in the list wins over a leftmost header,
+    // so e.g. a City column isn't shadowed by a Country column.
+    for (const a of CSV_ALIASES[f]) {
+      const j = headers.findIndex((h) => h === a);
+      if (j >= 0 && !used.has(j)) {
+        colFor.set(f, j);
+        used.add(j);
+        break;
+      }
     }
   }
   for (const f of fieldsOrder) {
@@ -138,6 +143,9 @@ export function parseCsv(csv: string): { rows: CsvLead[]; invalid: CsvLead[] } {
     }
   }
   const cols = (f: keyof Omit<CsvLead, 'error'>) => colFor.get(f) ?? -1;
+  // Scrape exports often carry a second phone column (phone2) — used as fallback only.
+  const phone2Col = headers.findIndex((h, i) => !used.has(i) && /^(phone ?2|mobile ?2|tel ?2|second phone|secondary phone|alt phone)$/.test(h));
+  const countryCol = headers.findIndex((h, i) => !used.has(i) && h === 'country');
   const rows: CsvLead[] = [];
   const invalid: CsvLead[] = [];
   for (let i = 1; i < lines.length && i <= 5000; i++) {
@@ -146,18 +154,36 @@ export function parseCsv(csv: string): { rows: CsvLead[]; invalid: CsvLead[] } {
       const v = col >= 0 ? (cells[col] ?? '').trim() : '';
       return v || null;
     };
+    let phone = get(cols('phone'));
+    if (phone && phone.replace(/\D/g, '').length < 7 && phone2Col >= 0) phone = null;
+    if (!phone && phone2Col >= 0) phone = (cells[phone2Col] ?? '').trim() || null;
+    let website = get(cols('website'));
+    let notes = get(cols('notes'));
+    // Directory URLs (Google Maps etc.) are not company websites — park them in notes
+    // instead of polluting the website/domain fields and duplicate detection.
+    if (website && /google\.[a-z.]+\/maps|maps\.app\.goo\.gl|google\.[a-z.]+\/search/i.test(website)) {
+      notes = [notes, `Maps: ${website.slice(0, 190)}`].filter(Boolean).join(' | ') || null;
+      website = null;
+    }
     const row: CsvLead = {
       company: get(cols('company')) ?? '',
       contactPerson: get(cols('contactPerson')),
       email: get(cols('email')),
-      phone: get(cols('phone')),
-      website: get(cols('website')),
+      phone,
+      website,
       domain: get(cols('domain')),
       industry: get(cols('industry')),
       location: get(cols('location')),
-      notes: get(cols('notes')),
+      notes,
       value: get(cols('value')),
     };
+    // Scrape titles often embed a trailing " original => translated" pair — keep the readable prefix.
+    const cut = row.company.split('=>')[0].trim();
+    if (cut) row.company = cut;
+    if (row.location && countryCol >= 0) {
+      const country = (cells[countryCol] ?? '').trim();
+      if (country && !row.location.toLowerCase().includes(country.toLowerCase())) row.location = `${row.location}, ${country}`;
+    }
     const emailOk = Boolean(row.email && row.email.includes('@'));
     const phoneOk = Boolean(row.phone && row.phone.replace(/\D/g, '').length >= 7);
     const webOk = Boolean(row.website && /\./.test(row.website));

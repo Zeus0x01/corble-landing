@@ -78,6 +78,27 @@ test('parseCsv separates valid rows and flags rows with no contact channel', () 
   assert.equal(invalid.length, 1); // website row IS valid (has domain); only companyless is invalid
 });
 
+test('parseCsv understands scraped Google-Maps exports (title/phone2/place columns)', () => {
+  const csv = [
+    'title,country,address,category,city,phone,phone2,url,email,status',
+    'Paragon Restaurant => x,SA,"3042 Masjid Ad Dar, Madinah",restaurant,Madinah,00966 56 375 5477 ,966563755477,https://www.google.com/maps/search/?api=1&query=Paragon,[],not qualification',
+    'Raduni restaurant =>,SA,"some street",restaurant,Madinah, ,,https://www.google.com/maps/search/?api=1&query=Raduni,[],not qualification',
+    'Cafe Cairo,EG,"downtown",cafe,Cairo,00966 58 294 6286,,https://maps.app.goo.gl/abc,[],ok',
+  ].join('\n');
+  const { rows, invalid } = parseCsv(csv);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].company, 'Paragon Restaurant');
+  assert.equal(rows[0].phone, '00966 56 375 5477');
+  assert.equal(rows[0].industry, 'restaurant');
+  assert.equal(rows[0].location, 'Madinah, SA');
+  assert.equal(rows[0].website, null);
+  assert.ok((rows[0].notes ?? '').includes('google.com/maps'));
+  assert.equal(rows[1].company, 'Cafe Cairo');
+  assert.equal(rows[1].website, null);
+  assert.ok((rows[1].notes ?? '').includes('maps.app.goo.gl'));
+  assert.equal(invalid.length, 1); // Raduni: no phone2 value and only a Maps URL -> no contact channel
+});
+
 /* ---------- validators ---------- */
 
 test('task schema carries description and start/due dates', () => {
