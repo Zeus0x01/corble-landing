@@ -1859,12 +1859,23 @@ export async function connectGithub(raw: unknown): Promise<ActionResult> {
 export async function disconnectGithub(raw: unknown): Promise<ActionResult> {
   try {
     const u = await requireUser();
-    const input = z.object({ projectId: z.string().min(1) }).parse(raw);
     if (u.role !== 'ADMIN') return { ok: false, error: 'Only admins can disconnect repos.' };
-    await db.gitHubConnection.deleteMany({ where: { projectId: input.projectId } });
-    await logActivity(u.id, 'GitHub repo disconnected', input.projectId);
+    const id = z.string().min(1).parse(raw);
+    // The payload is the project id; fall back to the connection id for legacy unlinked rows.
+    const target = await db.gitHubConnection.findFirst({
+      where: { OR: [{ projectId: id }, { id }] },
+      select: { projectId: true, owner: true, repo: true },
+    });
+    if (!target) return { ok: false, error: 'Repo connection not found.' };
+    const projectId = target.projectId ?? id;
+    await db.$transaction([
+      db.gitHubConnection.deleteMany({ where: { OR: [{ id }, ...(target.projectId ? [{ projectId: target.projectId }] : [])] } }),
+      db.deploymentConnection.deleteMany({ where: { projectId } }),
+    ]);
+    await logActivity(u.id, 'GitHub repo disconnected', `${target.owner}/${target.repo}`);
     revalidatePath('/workspace/github');
-    return okRes('Repo disconnected.');
+    revalidatePath('/workspace/vercel');
+    return okRes(`Disconnected ${target.owner}/${target.repo}.`);
   } catch (e) {
     return fail(e);
   }
