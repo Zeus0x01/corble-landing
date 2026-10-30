@@ -20,7 +20,7 @@ export default function HandoverButtons({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
-  async function act(decision: 'approv' | 'reject') {
+  async function act(decision: 'APPROVE' | 'REJECT') {
     setBusy(true);
     const res = await decideHandover({ requestId, decision });
     setBusy(false);
@@ -33,8 +33,8 @@ export default function HandoverButtons({
       <span className="pill">{requesterName} requests</span>
       {canDecide ? (
         <>
-          <button className="btn sq" disabled={busy} onClick={() => act('approv')} title={`Approve handover to ${requesterName}`} aria-label={`Approve ${requesterName}`}>✓</button>
-          <button className="btn sq" disabled={busy} onClick={() => act('reject')} title={`Decline ${requesterName}`} aria-label={`Decline ${requesterName}`}>✕</button>
+          <button className="btn sq" disabled={busy} onClick={() => act('APPROVE')} title={`Approve handover to ${requesterName}`} aria-label={`Approve ${requesterName}`}>✓</button>
+          <button className="btn sq" disabled={busy} onClick={() => act('REJECT')} title={`Decline ${requesterName}`} aria-label={`Decline ${requesterName}`}>✕</button>
         </>
       ) : (
         <span className="itemsub">awaiting owner</span>

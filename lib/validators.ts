@@ -135,7 +135,7 @@ export const handoverRequestSchema = z.object({
 
 export const handoverDecisionSchema = z.object({
   requestId: z.string().min(1),
-  decision: z.enum(['approv', 'reject']),
+  decision: z.enum(['APPROVE', 'REJECT']),
 });
 
 export const taskEligibilitySchema = z.object({

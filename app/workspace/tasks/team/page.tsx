@@ -123,7 +123,7 @@ export default async function TeamTasksPage({ searchParams }: { searchParams: Pr
                         requestId={h.id}
                         requesterName={h.requester.name}
                         requesterId={h.requesterId}
-                        canDecide={h.ownerId === meId || role === 'ADMIN'}
+                        canDecide={h.ownerId === meId || row.originalOwnerId === meId || role === 'ADMIN'}
                       />
                     ))}
                     <TaskActions

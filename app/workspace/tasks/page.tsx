@@ -51,7 +51,7 @@ export default async function MyTasksPage({ searchParams }: { searchParams: Prom
     where: {
       AND: [
         { deletedAt: null },
-        role === 'ADMIN' ? {} : { OR: [{ assigneeId: meId }, { createdById: meId }] },
+        role === 'ADMIN' ? {} : { OR: [{ assigneeId: meId }, { createdById: meId }, { originalOwnerId: meId }] },
         query ? { title: { contains: query, mode: 'insensitive' } } : {},
         statusFilter ? { status: statusFilter } : {},
       ],
@@ -64,8 +64,21 @@ export default async function MyTasksPage({ searchParams }: { searchParams: Prom
       createdBy: { select: { name: true } },
       comments: { select: { id: true } },
       handovers: {
-        where: { status: 'PENDING' },
-        select: { id: true, requesterId: true, requester: { select: { name: true, id: true } } },
+        // Full handover history, newest first — not only PENDING.
+        orderBy: { createdAt: 'desc' },
+        take: 6,
+        select: {
+          id: true,
+          requesterId: true,
+          ownerId: true,
+          status: true,
+          requester: { select: { name: true, id: true } },
+          owner: { select: { name: true, id: true } },
+          decidedBy: { select: { name: true, id: true } },
+          note: true,
+          createdAt: true,
+          decidedAt: true,
+        },
       },
       _count: { select: { comments: true, deliverables: true } },
     },
@@ -87,7 +100,7 @@ export default async function MyTasksPage({ searchParams }: { searchParams: Prom
         <div>
           <h2>My tasks</h2>
           <div className="sub">
-            {tasks.length} tasks · {overdue} overdue · pending handover decisions: {tasks.filter((t) => t.handovers.length > 0).length} ·{' '}
+            {tasks.length} tasks · {overdue} overdue · pending handover requests: {tasks.reduce((n, t) => n + t.handovers.filter((h) => h.status === 'PENDING').length, 0)} ·{' '}
             <Link href="/workspace/tasks/team" style={{ color: 'var(--purple)' }}>Team Tasks →</Link>
           </div>
         </div>
@@ -126,14 +139,20 @@ export default async function MyTasksPage({ searchParams }: { searchParams: Prom
                   <td>
                     <div>{t.assignee?.name ?? 'Unassigned'}</div>
                     <div className="itemsub">orig: {t.originalOwner?.name ?? t.assignee?.name ?? '—'}</div>
-                    {t.handovers.map((h) => (
+                    {t.handovers.filter((h) => h.status === 'PENDING').map((h) => (
                       <HandoverButtons
                         key={h.id}
                         requestId={h.id}
                         requesterName={h.requester.name}
                         requesterId={h.requesterId}
-                        canDecide={t.assigneeId === meId || role === 'ADMIN'}
+                        canDecide={h.ownerId === meId || t.originalOwnerId === meId || role === 'ADMIN'}
                       />
+                    ))}
+                    {t.handovers.filter((h) => h.status !== 'PENDING').slice(0, 3).map((h) => (
+                      <div className="itemsub" key={h.id} title={h.owner?.name ? `${h.requester.name} ← ${h.owner.name}` : undefined}>
+                        {h.status === 'APPROVED' ? '✓' : '✕'} {h.requester.name} takeover
+                        {h.decidedAt ? ` · ${formatDate(h.decidedAt)}` : ''}
+                      </div>
                     ))}
                   </td>
                   <td>
@@ -156,7 +175,7 @@ export default async function MyTasksPage({ searchParams }: { searchParams: Prom
                       ownerId={t.originalOwnerId}
                       status={t.status}
                       eligible={t.eligibleForHandover}
-                      pendingForMe={t.assigneeId === meId && t.handovers.length > 0}
+                      pendingForMe={t.assigneeId === meId && t.handovers.some((h) => h.status === 'PENDING')}
                       iRequested={iRequested.has(t.id)}
                     />
                     <ModalForm

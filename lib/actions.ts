@@ -446,7 +446,7 @@ export async function updateTaskInline(raw: unknown): Promise<ActionResult> {
   try {
     const u = await requireUser();
     const { id, status, priority, assigneeId } = taskInlineSchema.parse(raw);
-    const prev = await db.task.findUnique({ where: { id }, select: { assigneeId: true } });
+    const prev = await db.task.findUnique({ where: { id }, select: { assigneeId: true, title: true } });
     const t = await db.task.update({
       where: { id },
       data: {
@@ -459,6 +459,32 @@ export async function updateTaskInline(raw: unknown): Promise<ActionResult> {
     const newAssignee = assigneeId !== undefined ? (assigneeId || null) : prev?.assigneeId;
     if (newAssignee && newAssignee !== prev?.assigneeId) {
       await notifyAssigneeIfAny(newAssignee, t, u.name);
+      // Reassignment resolves pending handover requests safely (B4) — they now point at a stale owner.
+      const penders = await db.handoverRequest.findMany({
+        where: { taskId: t.id, status: 'PENDING' },
+        select: { requesterId: true },
+      });
+      if (penders.length > 0) {
+        await db.handoverRequest.updateMany({
+          where: { taskId: t.id, status: 'PENDING' },
+          data: { status: 'CANCELLED', decidedById: u.id, decidedAt: new Date() },
+        });
+        for (const r of penders) {
+          for (const partyId of [r.requesterId, prev?.assigneeId ?? null]) {
+            if (!partyId || partyId === u.id) continue;
+            await notify(partyId, 'HANDOVER_CANCELLED', `Handover request cancelled — "${t.title}" was reassigned`, undefined, '/workspace/tasks');
+            await mailUser(partyId, () => ({
+              eyebrow: 'Corble · Handover request',
+              introName: `a handover request on "${t.title}" was closed automatically.`,
+              message: `The task was reassigned, so its pending handover requests were cancelled.`,
+              body: 'Open the tasks view to request the task again if takeover is still needed.',
+              ctaLabel: 'Open tasks →',
+              ctaPath: '/workspace/tasks',
+              footer: FOOTER,
+            }));
+          }
+        }
+      }
     }
     revalidatePath('/workspace/tasks');
     revalidatePath('/workspace');
@@ -852,6 +878,17 @@ export async function completeTask(raw: unknown): Promise<ActionResult> {
     if (u.id !== task.assigneeId && u.id !== task.createdById && u.role !== 'ADMIN') {
       return { ok: false, error: 'Not authorized to complete this task.' };
     }
+    // A task cannot be completed while its deliverables still await review (B6).
+    const openDeliverable = await db.deliverable.findFirst({
+      where: { taskId: task.id, status: { in: ['SUBMITTED', 'UNDER_REVIEW', 'CHANGES_REQUESTED'] } },
+      select: { id: true, title: true },
+    });
+    if (openDeliverable) {
+      if (u.role !== 'ADMIN') {
+        return { ok: false, error: `"${openDeliverable.title}" still awaits review — resolve the deliverable before completing this task.` };
+      }
+      await logActivity(u.id, 'Complete override with open deliverable', `${task.title} — "${openDeliverable.title}" still open`);
+    }
     await db.task.update({
       where: { id: task.id },
       data: { status: 'DONE', completedAt: new Date() },
@@ -988,7 +1025,7 @@ export async function decideHandover(raw: unknown): Promise<ActionResult> {
   try {
     const u = await requireUser();
     const input = handoverDecisionSchema.parse(raw);
-    const decision = input.decision === 'approv' ? 'APPROVED' : 'REJECTED';
+    const approve = input.decision === 'APPROVE';
     const result = await db.$transaction(async (tx) => {
       const req = await tx.handoverRequest.findUnique({
         where: { id: input.requestId },
@@ -996,10 +1033,13 @@ export async function decideHandover(raw: unknown): Promise<ActionResult> {
       });
       if (!req) return { kind: 'missing' as const };
       if (req.status !== 'PENDING') return { kind: 'resolved' as const, message: 'Request already decided.' };
-      // Authorization: owner of the task, or an admin. Requester can cancel their own pending request.
+      // Authorization: the assignee the request targets, the task's original owner, or an admin.
+      // A requester may only cancel their own pending request.
       const isOwner = req.ownerId === u.id;
-      const isRequester = req.requesterId === u.id && input.decision === 'reject'; // requester action = cancel
-      if (!isOwner && !isRequester && u.role !== 'ADMIN') {
+      const originalOwnerId = req.task.originalOwnerId ?? null;
+      const isOriginalOwner = originalOwnerId !== null && originalOwnerId === u.id;
+      const isRequester = req.requesterId === u.id && input.decision === 'REJECT'; // requester action = cancel
+      if (!isOwner && !isRequester && !isOriginalOwner && u.role !== 'ADMIN') {
         return { kind: 'forbidden' as const };
       }
       if (isRequester && !isOwner && u.role !== 'ADMIN') {
@@ -1012,8 +1052,8 @@ export async function decideHandover(raw: unknown): Promise<ActionResult> {
         });
         return { kind: 'done' as const, cancelled, message: 'Request cancelled.' };
       }
-      if (decision === 'APPROVED') {
-        const current = await tx.task.findUnique({ where: { id: req.taskId }, select: { assigneeId: true, status: true, title: true } });
+      if (approve) {
+        const current = await tx.task.findUnique({ where: { id: req.taskId }, select: { assigneeId: true, originalOwnerId: true, status: true, title: true } });
         if (!current) return { kind: 'missing' as const };
         if (current.assigneeId !== req.ownerId) {
           await tx.handoverRequest.update({ where: { id: req.id }, data: { status: 'REJECTED', decidedById: u.id, decidedAt: new Date() } });
@@ -1027,7 +1067,8 @@ export async function decideHandover(raw: unknown): Promise<ActionResult> {
           where: { id: req.taskId },
           data: {
             assigneeId: req.requesterId,
-            originalOwnerId: current.assigneeId,
+            // First-owner identity is preserved forever: never overwrite it with the middle owner.
+            originalOwnerId: current.originalOwnerId ?? current.assigneeId,
             eligibleForHandover: false,
           },
         });
@@ -1056,7 +1097,7 @@ export async function decideHandover(raw: unknown): Promise<ActionResult> {
       return { kind: 'done' as const, message: 'Request declined.' };
     });
     if (!result || result.kind === 'missing') return { ok: false, error: 'Request not found.' };
-    if (result.kind === 'forbidden') return { ok: false, error: 'Only the current owner (or an admin) can decide this request.' };
+    if (result.kind === 'forbidden') return { ok: false, error: 'Only the task owner, its original owner, or an admin can decide this request.' };
     if (result.kind === 'resolved' || result.kind === 'stale') {
       return { ok: true, message: result.message };
     }

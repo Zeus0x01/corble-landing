@@ -111,7 +111,8 @@ test('task schema carries description and start/due dates', () => {
 test('handover schemas validate decision vocabulary', () => {
   assert.equal(handoverRequestSchema.safeParse({ taskId: 'x' }).success, true);
   assert.equal(handoverRequestSchema.safeParse({ taskId: '' }).success, false);
-  assert.equal(handoverDecisionSchema.safeParse({ requestId: 'x', decision: 'approv' }).success, true);
+  assert.equal(handoverDecisionSchema.safeParse({ requestId: 'x', decision: 'APPROVE' }).success, true);
+  assert.equal(handoverDecisionSchema.safeParse({ requestId: 'x', decision: 'approv' }).success, false);
   assert.equal(handoverDecisionSchema.safeParse({ requestId: 'x', decision: 'maybe' }).success, false);
 });
 
