@@ -11,13 +11,9 @@ function secretOk(req: NextRequest): boolean {
   const secret = process.env.INGEST_WEBHOOK_SECRET;
   if (!secret) return false;
   const provided = req.headers.get('x-ingest-secret') ?? '';
-  try {
-    const a = Buffer.from(provided.padEnd(64, '0').slice(0, 64));
-    const b = Buffer.from(secret.padEnd(64, '0').slice(0, 64));
-    return a.equals(b);
-  } catch {
-    return false;
-  }
+  const a = Buffer.from(provided);
+  const b = Buffer.from(secret);
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 export async function POST(req: NextRequest) {

@@ -26,12 +26,12 @@ function normalizeBase(raw: string): string {
 
 export function n8nConfigured(): boolean {
   const base = process.env.N8N_BASE_URL ?? '';
-  return Boolean(normalizeBase(base) && process.env.N8N_API_KEY);
+  return Boolean(normalizeBase(base) && process.env.N8N_API_KEY?.trim());
 }
 
 export function n8nMissing(): { baseUrl: boolean; apiKey: boolean } {
   const base = normalizeBase(process.env.N8N_BASE_URL ?? '');
-  return { baseUrl: !base, apiKey: !process.env.N8N_API_KEY };
+  return { baseUrl: !base, apiKey: !process.env.N8N_API_KEY?.trim() };
 }
 
 async function n8n(path: string, init: RequestInit = {}): Promise<Response> {

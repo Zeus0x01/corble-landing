@@ -26,6 +26,7 @@ export default function N8nPanel({ admin, configured, missing, assets }: { admin
   const [viewing, setViewing] = useState<{ name: string; json: string } | null>(null);
   const [importAsset, setImportAsset] = useState<string>('');
   const [importName, setImportName] = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!admin || !configured) return;
@@ -33,7 +34,7 @@ export default function N8nPanel({ admin, configured, missing, assets }: { admin
     (async () => {
       setLoadErr(null);
       try {
-        const res = await fetch('/api/n8n/workflows', { cache: 'no-store' });
+        const res = await fetch(`/api/n8n/workflows${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''}`, { cache: 'no-store' });
         const data = (await res.json()) as { ok: boolean; workflows?: WorkflowSummary[]; error?: string };
         if (cancelled) return;
         if (!data.ok || !data.workflows) setLoadErr(data.error ?? 'Could not load workflows.');
@@ -45,7 +46,13 @@ export default function N8nPanel({ admin, configured, missing, assets }: { admin
     return () => {
       cancelled = true;
     };
-  }, [admin, configured]);
+  }, [admin, configured, q, refreshKey]);
+
+  function refresh() {
+    setWorkflows(null);
+    setLoadErr(null);
+    setRefreshKey((value) => value + 1);
+  }
 
   async function view(w: WorkflowSummary) {
     setBusy(`view:${w.id}`);
@@ -117,6 +124,7 @@ export default function N8nPanel({ admin, configured, missing, assets }: { admin
               />
             </div>
             <span className="itemsub">{workflows ? `${filtered.length} of ${workflows.length}` : ''}</span>
+            {configured ? <button className="btn sq" onClick={refresh} disabled={busy !== null || workflows === null} title="Refresh workflows">↻</button> : null}
           </div>
           {loadErr ? <div className="empty" style={{ padding: 22 }}>{loadErr}</div> : null}
           {workflows === null && !loadErr && configured ? <div className="empty" style={{ padding: 22 }}>Loading workflows…</div> : null}
@@ -173,13 +181,14 @@ export default function N8nPanel({ admin, configured, missing, assets }: { admin
             </label>
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
-            <button className="btn primary" onClick={importWf} disabled={busy !== null || !importAsset}>
+            <button className="btn primary" onClick={importWf} disabled={!configured || busy !== null || !importAsset}>
               {busy === 'import' ? 'Importing…' : 'Import to n8n'}
             </button>
           </div>
           {assets.length === 0 ? (
             <div className="sub" style={{ marginTop: 8 }}>No JSON files in the library yet — export a workflow above, or upload one on the Files page.</div>
           ) : null}
+          {!configured ? <div className="sub" style={{ marginTop: 8 }}>Import is unavailable until the n8n connection is configured.</div> : null}
         </section>
       </div>
 
