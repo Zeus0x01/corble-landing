@@ -26,7 +26,7 @@ export default async function AutomationPage() {
     db.user.findMany({ where: { isActive: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     db.project.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
   ]);
-  const otherUsers = users.filter((u) => u.id !== me);
+  const otherUsers = role === 'ADMIN' ? users.filter((u) => u.id !== me) : [];
 
   const createFields: FieldSpec[] = [
     { label: 'Automation name', name: 'name', required: true, value: '' },
