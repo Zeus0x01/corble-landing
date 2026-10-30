@@ -3,25 +3,20 @@ import Credentials from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import { db } from '@/lib/db';
 import { loginSchema } from '@/lib/validators';
+import { rateLimit, clearRateLimit, pruneRateLimits } from '@/lib/ratelimit';
 
-// Simple in-memory rate limiter for /login (per email + IP bucket).
-const attempts = new Map<string, { count: number; first: number }>();
+// Login rate limiting (D6): DB-backed so it holds across serverless instances.
+// Keys include the request IP — an attacker cannot lock a specific admin account
+// by spoofing a known email, because only their own IP bucket trips.
 const WINDOW_MS = 10 * 60 * 1000;
-const MAX_ATTEMPTS = 10;
+const MAX_PER_EMAIL_IP = 10;
+const MAX_PER_IP = 25;
 
-export function checkRateLimit(key: string): boolean {
-  const now = Date.now();
-  const rec = attempts.get(key);
-  if (!rec || now - rec.first > WINDOW_MS) {
-    attempts.set(key, { count: 1, first: now });
-    return true;
-  }
-  rec.count += 1;
-  return rec.count <= MAX_ATTEMPTS;
-}
-
-export function clearRateLimit(key: string) {
-  attempts.delete(key);
+function clientIp(headers: Headers | null): string {
+  if (!headers) return 'unknown';
+  const fwd = headers.get('x-forwarded-for');
+  if (fwd) return fwd.split(',')[0].trim();
+  return headers.get('x-real-ip')?.trim() || 'unknown';
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -34,10 +29,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
       },
-      authorize: async (raw) => {
+      authorize: async (raw, req) => {
         const parsed = loginSchema.safeParse(raw);
         if (!parsed.success) return null;
-        if (!checkRateLimit(`login:${parsed.data.email}`)) return null;
+        const ip = clientIp((req as Request | undefined)?.headers ?? null);
+        void pruneRateLimits();
+        const emailBucket = `login:email:${parsed.data.email.toLowerCase()}:ip:${ip}`;
+        const ipBucket = `login:ip:${ip}`;
+        if (!(await rateLimit(emailBucket, MAX_PER_EMAIL_IP, WINDOW_MS))) return null;
+        if (!(await rateLimit(ipBucket, MAX_PER_IP, WINDOW_MS))) return null;
 
         const user = await db.user.findUnique({ where: { email: parsed.data.email } });
         if (!user || !user.passwordHash) return null;
@@ -46,7 +46,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!valid) return null;
         if (!user.isActive) return null;
 
-        clearRateLimit(`login:${parsed.data.email}`);
+        await Promise.all([clearRateLimit(emailBucket), clearRateLimit(ipBucket)]);
         return { id: user.id, name: user.name, email: user.email, role: user.role, theme: user.theme };
       },
     }),

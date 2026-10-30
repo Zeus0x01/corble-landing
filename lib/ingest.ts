@@ -25,6 +25,19 @@ export const ingestSchema = z.object({
 
 export type IngestPayload = z.infer<typeof ingestSchema>;
 
+// Free-mail providers can never represent a company domain (D1).
+const FREE_MAIL = new Set([
+  'gmail.com', 'yahoo.com', 'yahoo.co.uk', 'yahoo.fr', 'hotmail.com', 'hotmail.fr',
+  'outlook.com', 'live.com', 'msn.com', 'icloud.com', 'me.com', 'mac.com',
+  'aol.com', 'protonmail.com', 'proton.me', 'gmx.com', 'gmx.net', 'mail.ru',
+  'yandex.com', 'yandex.ru', 'zoho.com', 'qq.com', '163.com', '126.com',
+  'googlemail.com', 'hotmail.co.uk', 'ymail.com', 'rocketmail.com',
+]);
+
+export function isFreeMailDomain(d: string | null | undefined): boolean {
+  return Boolean(d && FREE_MAIL.has(d.trim().toLowerCase()));
+}
+
 export function normalizeDomain(value?: string | null): string | null {
   if (!value) return null;
   let v = value.trim().toLowerCase();
@@ -33,42 +46,142 @@ export function normalizeDomain(value?: string | null): string | null {
   return /^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/.test(v) ? v : null;
 }
 
+// Domain derived from an email; never a free-mail (personal) mailbox domain.
+export function domainFromEmail(value?: string | null): string | null {
+  const d = normalizeDomain(value);
+  return isFreeMailDomain(d) ? null : d;
+}
+
+// Strict email validation: one @, no spaces/controls, a real TLD label.
+export const EMAIL_STRICT_RE = /^[a-z0-9._%+-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/i;
+
+export function normalizeEmail(value?: string | null): string | null {
+  if (!value) return null;
+  const v = value.trim().toLowerCase();
+  if (/\s/.test(v)) return null; // any embedded space invalidates an address
+  if (!EMAIL_STRICT_RE.test(v)) return null;
+  return v;
+}
+
+// Phone → digits-only national format, or E.164 when the source carries country info:
+// `+20...`, `0020...`, and `+`-prefixed values normalize to a single leading `+`.
+// Values without any country marker are stored as plain digits (never guessed).
+export function normalizePhone(value?: string | null): string | null {
+  if (!value) return null;
+  let v = value.trim().replace(/[^\d+]/g, '');
+  v = v.replace(/\++/g, '+');
+  if (v.startsWith('00')) v = `+${v.slice(2)}`;
+  if (v === '+' || v.replace(/\D/g, '').length < 7 || v.replace(/\D/g, '').length > 15) return null;
+  if (v.replace(/\D/g, '').length < 9 && !v.startsWith('+')) return null; // too short to be a real line
+  return v;
+}
+
+// Fingerprint for duplicate detection across national/international spellings.
+export function phoneFingerprint(value?: string | null): string | null {
+  const digits = value?.replace(/\D/g, '') ?? '';
+  if (digits.length < 7) return null;
+  return digits.slice(-10);
+}
+
+// Website normalization: force https (memory only of scrape exports), strip a
+// trailing slash / index page, drop query & fragment noise, cap length.
+export function normalizeWebsite(value?: string | null): string | null {
+  if (!value) return null;
+  let v = value.trim();
+  if (!v) return null;
+  if (/^(?:javascript|data|file|ftp):/i.test(v)) return null;
+  if (!/^https?:\/\//i.test(v)) v = `https://${v.replace(/^\/+/, '')}`;
+  v = v.replace(/\?[^]*$/, '').replace(/#.*$/, '');
+  try {
+    const u = new URL(v);
+    if (!/^https?:$/.test(u.protocol)) return null;
+    let out = `${u.protocol}//${u.host.toLowerCase()}`.replace(/:80$/, '').replace(/:443$/, '');
+    if (u.hostname === 'localhost' || /^127\./.test(u.hostname)) return out || null;
+    let path = u.pathname.replace(/^\/+/, '');
+    path = path.replace(/^(?:index|home)\.(?:html?|php|aspx?)$/i, '');
+    path = path.replace(/\/(?:index|home)\.(?:html?|php|aspx?)$/i, '');
+    path = path.replace(/\/+$/, '');
+    if (path) out += `/${path}`;
+    return out.length > 200 ? out.slice(0, 200) : out;
+  } catch {
+    return null;
+  }
+}
+
 export function normalizedSummary(p: IngestPayload) {
   const f = p.fields;
-  const email = f.email && f.email.includes('@') ? f.email.trim().toLowerCase() : null;
-  const website = f.website ? (/^https?:\/\//i.test(f.website) ? f.website.trim() : `https://${f.website.trim()}`) : null;
-  const domain = normalizeDomain(f.domain) ?? normalizeDomain(website) ?? normalizeDomain(email);
-  const phone = f.phone ? f.phone.replace(/[^\d+]/g, '') : null;
+  const email = normalizeEmail(f.email);
+  const website = normalizeWebsite(f.website);
+  // Domain priority: explicit → website host → email host (free-mail excluded).
+  const domain = normalizeDomain(f.domain) ?? normalizeDomain(website) ?? domainFromEmail(email);
+  const phone = normalizePhone(f.phone);
   return { email, website, domain, phone };
 }
 
 export function ingestKeyOf(p: IngestPayload): string | null {
   if (p.workflowId && p.recordId) return `${p.workflowId}:${p.recordId}`;
   if (p.externalEventId) return `evt:${p.externalEventId}`;
-  return null;
+  // Deterministic fallback so repeated deliveries without IDs stay idempotent (D2).
+  const f = p.fields;
+  const s = normalizedSummary(p);
+  const anchor = s.email ?? s.domain ?? s.website ?? s.phone ?? `${f.company}`.toLowerCase().replace(/\s+/g, ' ');
+  return `content:${normalizeDomain(f.company) ?? f.company.trim().toLowerCase().slice(0, 80)}:${anchor.slice(0, 160)}`;
 }
 
 // Alias used across modules that reference the canonical domain normalizer.
 export const domainOf = normalizeDomain;
 
-const buckets = new Map<string, { count: number; reset: number }>();
-
-export function rateLimit(key: string, limit = 60, windowMs = 60_000): boolean {
-  const now = Date.now();
-  const b = buckets.get(key);
-  if (!b || b.reset < now) {
-    buckets.set(key, { count: 1, reset: now + windowMs });
-    return true;
-  }
-  if (b.count >= limit) return false;
-  b.count += 1;
-  return true;
-}
+// Rate limiting moved to lib/ratelimit.ts (shared DB-backed store). Re-exported
+// here so existing call sites keep their import path.
+export { rateLimit } from './ratelimit';
 
 // --- CSV parsing/validation for import preview + commit ---
 const CSV_HEAD = ['company', 'contact person', 'email', 'phone', 'website', 'domain', 'industry', 'location', 'notes'];
 
-function splitCsvLine(line: string): string[] {
+// RFC-4180 state machine: supports quoted fields containing commas AND real
+// newlines (multiline quoted fields — D4), plus "" escapes.
+export function parseCsvText(text: string): { rows: string[][] } {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cur = '';
+  let inQ = false;
+  let started = false;
+  const pushCell = () => { row.push(cur); cur = ''; started = false; };
+  const pushRow = () => {
+    // fully-consumed row; caller decides blankness
+    rows.push(row);
+    row = [];
+  };
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { cur += '"'; i++; }
+        else inQ = false;
+      } else cur += c;
+    } else if (c === '"' && !cur) {
+      inQ = true;
+      started = true;
+    } else if (c === ',') {
+      pushCell();
+    } else if (c === '\r') {
+      if (text[i + 1] === '\n') i++;
+      if (started || cur !== '' || row.length) { pushCell(); pushRow(); }
+    } else if (c === '\n') {
+      if (started || cur !== '' || row.length) { pushCell(); pushRow(); }
+    } else {
+      cur += c;
+      started = true;
+    }
+  }
+  if (inQ) cur += '"'; // unterminated quote — keep the data instead of dropping it
+  if (started || cur !== '' || row.length) { pushCell(); pushRow(); }
+  // Drop fully-empty rows.
+  return { rows: rows.filter((r) => r.some((cell) => cell.trim().length > 0)) };
+}
+
+// Single-line variant kept for tests + one-off parsing.
+export function splitCsvLine(line: string): string[] {
   const out: string[] = [];
   let cur = '';
   let inQ = false;
@@ -116,9 +229,12 @@ const CSV_ALIASES: Record<keyof Omit<CsvLead, 'error'>, string[]> = {
 };
 
 export function parseCsv(csv: string): { rows: CsvLead[]; invalid: CsvLead[] } {
-  const lines = csv.trim().split(/\r?\n/).filter((l) => l.trim().length > 0);
-  if (lines.length < 2) return { rows: [], invalid: [] };
-  const headers = splitCsvLine(lines[0]).map(normHeader);
+  const table = parseCsvText(csv);
+  if (table.rows.length < 2) return { rows: [], invalid: [] };
+  const [header, ...body] = table.rows;
+  const headers = header.map(normHeader);
+  const MAX_ROWS = 5000;
+  if (body.length > MAX_ROWS) return { rows: [], invalid: [{ ...emptyLead(), error: `File too large: ${body.length} rows > ${MAX_ROWS} — split the file` }] };
   const fieldsOrder = Object.keys(CSV_ALIASES) as (keyof Omit<CsvLead, 'error'>)[];
   const colFor = new Map<keyof Omit<CsvLead, 'error'>, number>();
   const used = new Set<number>();
@@ -148,15 +264,13 @@ export function parseCsv(csv: string): { rows: CsvLead[]; invalid: CsvLead[] } {
   const countryCol = headers.findIndex((h, i) => !used.has(i) && h === 'country');
   const rows: CsvLead[] = [];
   const invalid: CsvLead[] = [];
-  for (let i = 1; i < lines.length && i <= 5000; i++) {
-    const cells = splitCsvLine(lines[i]);
+  for (const cells of body) {
     const get = (col: number) => {
       const v = col >= 0 ? (cells[col] ?? '').trim() : '';
       return v || null;
     };
-    let phone = get(cols('phone'));
-    if (phone && phone.replace(/\D/g, '').length < 7 && phone2Col >= 0) phone = null;
-    if (!phone && phone2Col >= 0) phone = (cells[phone2Col] ?? '').trim() || null;
+    let phone = normalizePhone(get(cols('phone')));
+    if (!phone && phone2Col >= 0) phone = normalizePhone((cells[phone2Col] ?? '').trim());
     let website = get(cols('website'));
     let notes = get(cols('notes'));
     // Directory URLs (Google Maps etc.) are not company websites — park them in notes
@@ -165,10 +279,15 @@ export function parseCsv(csv: string): { rows: CsvLead[]; invalid: CsvLead[] } {
       notes = [notes, `Maps: ${website.slice(0, 190)}`].filter(Boolean).join(' | ') || null;
       website = null;
     }
+    const emailRaw = get(cols('email'));
+    // Scrape exports carry junk like "[]" or "-" in the email column — values
+    // without any @ are treated as missing; only broken-with-@ values are flagged.
+    const looksLikeEmail = Boolean(emailRaw && emailRaw.includes('@'));
+    const email = looksLikeEmail ? normalizeEmail(emailRaw) : null;
     const row: CsvLead = {
       company: get(cols('company')) ?? '',
       contactPerson: get(cols('contactPerson')),
-      email: get(cols('email')),
+      email,
       phone,
       website,
       domain: get(cols('domain')),
@@ -184,13 +303,14 @@ export function parseCsv(csv: string): { rows: CsvLead[]; invalid: CsvLead[] } {
       const country = (cells[countryCol] ?? '').trim();
       if (country && !row.location.toLowerCase().includes(country.toLowerCase())) row.location = `${row.location}, ${country}`;
     }
-    const emailOk = Boolean(row.email && row.email.includes('@'));
-    const phoneOk = Boolean(row.phone && row.phone.replace(/\D/g, '').length >= 7);
+    const phoneOk = Boolean(phone);
     const webOk = Boolean(row.website && /\./.test(row.website));
     const domainOk = Boolean(row.domain && /\./.test(row.domain));
     if (!row.company) {
       invalid.push({ ...row, error: 'Missing company' });
-    } else if (!emailOk && !phoneOk && !webOk && !domainOk) {
+    } else if (looksLikeEmail && !email) {
+      invalid.push({ ...row, error: `Invalid email "${emailRaw!.slice(0, 60)}"` });
+    } else if (!email && !phoneOk && !webOk && !domainOk) {
       invalid.push({
         ...row,
         error: [cols('email'), cols('phone'), cols('website'), cols('domain')].some((c) => c >= 0)
@@ -204,4 +324,8 @@ export function parseCsv(csv: string): { rows: CsvLead[]; invalid: CsvLead[] } {
   return { rows, invalid };
 }
 
-export { CSV_HEAD, splitCsvLine };
+function emptyLead(): CsvLead {
+  return { company: '', contactPerson: null, email: null, phone: null, website: null, domain: null, industry: null, location: null, notes: null, value: null };
+}
+
+export { CSV_HEAD };

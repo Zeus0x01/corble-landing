@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/app/workspace/Shell';
-import { runVerification, addResearch, rejectIncoming, deleteIncoming, promoteToFinal } from '@/lib/actions';
+import { runVerification, addResearch, rejectIncoming, deleteIncoming, promoteToFinal, unpromoteIncoming } from '@/lib/actions';
 import ModalForm from '@/components/ModalForm';
 import ConfirmAction from '@/components/ConfirmAction';
 import type { FieldSpec } from '@/lib/validators';
@@ -15,7 +15,11 @@ type Props = {
   verification: string;
   hasContact: boolean;
   owners: { id: string; name: string }[];
+  isAdmin: boolean;
 };
+
+// Verification levels that count as "checked at least once" for promotion (D3).
+const VERIFIED_OK = new Set(['SYNTAX_VALIDATED', 'DOMAIN_CHECKED', 'WEBSITE_REACHABLE', 'CONTACT_VERIFIED', 'MANUALLY_REVIEWED']);
 
 export default function IncomingActions(p: Props) {
   const toast = useToast();
@@ -35,6 +39,8 @@ export default function IncomingActions(p: Props) {
 
   const promoted = p.processingStatus === 'PROMOTED';
   const rejected = p.processingStatus === 'REJECTED';
+  const verifiedEnough = VERIFIED_OK.has(p.verification);
+  const promoteAllowed = promoted || rejected ? false : verifiedEnough || p.isAdmin;
 
   const promoteFields: FieldSpec[] = [
     { label: 'Owner of the final lead', name: 'ownerId', type: 'select', full: true, options: [{ value: '', label: 'Me' }, ...p.owners.map((o) => ({ value: o.id, label: o.name }))], value: '' },
@@ -48,11 +54,15 @@ export default function IncomingActions(p: Props) {
         <>
           <button className="btn sq" disabled={busy} title="Check email syntax" aria-label="Verify email syntax" onClick={() => run(() => runVerification({ leadId: p.leadId, method: 'EMAIL_SYNTAX' }))}>@</button>
           <button className="btn sq" disabled={busy} title="Check domain DNS" aria-label="Verify domain" onClick={() => run(() => runVerification({ leadId: p.leadId, method: 'DOMAIN_DNS' }))}>DNS</button>
-          <button className="btn sq" disabled={busy} title="Fetch website (8s timeout)" aria-label="Verify website" onClick={() => run(() => runVerification({ leadId: p.leadId, method: 'WEBSITE_FETCH' }))}>☰</button>
+          <button className="btn sq" disabled={busy} title="Fetch website (8s timeout, SSRF-guarded)" aria-label="Verify website" onClick={() => run(() => runVerification({ leadId: p.leadId, method: 'WEBSITE_FETCH' }))}>☰</button>
           <button className="btn sq" disabled={busy} title="Record manual review" aria-label="Record manual review" onClick={() => run(() => runVerification({ leadId: p.leadId, method: 'MANUAL_REVIEW' }))}>👁</button>
           <button className="btn sq" disabled={busy} onClick={() => setShowResearch((v) => !v)} title="Add research note" aria-label="Add research note">✎</button>
           <button className="btn sq" disabled={busy} onClick={() => run(() => rejectIncoming({ incomingId: p.leadId }))} title="Reject lead" aria-label="Reject lead">✕</button>
-          <ModalForm title={`Promote "${p.company}" to Final Leads`} trigger="⤒ Promote" triggerClass="btn" action={promoteToFinal} fields={promoteFields} hidden={{ incomingId: p.leadId }} />
+          {promoteAllowed ? (
+            <ModalForm title={`Promote "${p.company}" to Final Leads`} trigger="⤒ Promote" triggerClass="btn" action={promoteToFinal} fields={promoteFields} hidden={{ incomingId: p.leadId }} />
+          ) : (
+            <button className="btn" disabled title="Run at least one verification check first (admin can override)">⤒ Promote</button>
+          )}
         </>
       ) : null}
       {rejected ? (
@@ -64,7 +74,21 @@ export default function IncomingActions(p: Props) {
       {!promoted ? (
         <ConfirmAction action={deleteIncoming} payload={p.leadId} label={`Delete ${p.company}`} confirmText={`Permanently delete incoming lead "${p.company}"? This cannot be undone.`} className="btn sq danger">🗑</ConfirmAction>
       ) : null}
-      {promoted ? <span className="pill" style={{ color: 'var(--green)' }}>promoted ✓</span> : null}
+      {promoted ? (
+        <>
+          <span className="pill" style={{ color: 'var(--green)' }}>promoted ✓</span>
+          <ConfirmAction
+            action={unpromoteIncoming}
+            payload={p.leadId}
+            label={`Un-promote ${p.company}`}
+            confirmText={`Un-promote "${p.company}"? The incoming record is re-opened for review; the existing final lead stays untouched.`}
+            className="btn sq"
+            title="Re-open this incoming lead (one-click un-promote)"
+          >
+            ↩
+          </ConfirmAction>
+        </>
+      ) : null}
 
       {showResearch ? (
         <span style={{ display: 'inline-flex', gap: 6, width: '100%', flexDirection: 'column' }}>

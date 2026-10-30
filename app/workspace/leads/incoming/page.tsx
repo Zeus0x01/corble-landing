@@ -86,7 +86,7 @@ export default async function IncomingLeadsPage({ searchParams }: { searchParams
         <div className="itemsub">{formatDT(l.receivedAt)}</div>
         {l.batchId ? <div className="itemsub">batch {l.importBatch?.filename ?? l.batchId.slice(0, 8)}</div> : null}
       </>,
-      <span key="v" className="pill" style={l.verification === 'INVALID' || l.verification === 'VERIFICATION_FAILED' ? { color: 'var(--acid)' } : l.verification !== 'UNVERIFIED' ? { color: 'var(--green)' } : undefined}>{labelize(l.verification)}</span>,
+      <span key="v" className="pill" style={l.verification === 'INVALID' || l.verification === 'VERIFICATION_FAILED' ? { color: 'var(--acid)' } : l.verification === 'WEBSITE_REACHABLE' || l.verification === 'CONTACT_VERIFIED' || l.verification === 'MANUALLY_REVIEWED' ? { color: 'var(--green)' } : undefined}>{labelize(l.verification)}</span>,
       <>
         {l.researchUpdates.map((r) => (
           <div key={r.id} className="itemsub">✎ {r.author?.name ?? 'member'}: {r.body}</div>
@@ -126,6 +126,7 @@ export default async function IncomingLeadsPage({ searchParams }: { searchParams
           verification={l.verification}
           hasContact={Boolean(l.email || l.phone || l.website)}
           owners={users}
+          isAdmin={role === 'ADMIN'}
         />
       </span>,
     ],

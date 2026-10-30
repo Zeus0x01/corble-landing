@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { ingestSchema, domainOf, ingestKeyOf, rateLimit, parseCsv, splitCsvLine } from '../lib/ingest';
+import { ingestSchema, domainOf, domainFromEmail, normalizeEmail, normalizePhone, phoneFingerprint, normalizeWebsite, ingestKeyOf, parseCsv, parseCsvText, splitCsvLine } from '../lib/ingest';
+import { assertSafeUrl } from '../lib/urlguard';
 import {
   taskSchema,
   handoverRequestSchema,
@@ -40,22 +41,47 @@ test('domainOf normalizes emails and URLs and rejects junk', () => {
   assert.equal(domainOf(undefined), null);
 });
 
-test('ingestKeyOf builds idempotency keys or falls back to null', () => {
+test('ingestKeyOf builds idempotency keys, with a deterministic content fallback', () => {
   assert.equal(ingestKeyOf({ workflowId: 'wf', recordId: 'rec', source: 'n8n', fields: { company: 'x' } }), 'wf:rec');
   assert.equal(ingestKeyOf({ externalEventId: 'evt-9', source: 'n8n', fields: { company: 'x' } }), 'evt:evt-9');
-  assert.equal(ingestKeyOf({ source: 'n8n', fields: { company: 'x' } }), null);
+  const k = ingestKeyOf({ source: 'n8n', fields: { company: 'x', email: 'a@b.co' } });
+  assert.ok(k && k.startsWith('content:'), 'no-ID payloads still get a stable key');
+  assert.equal(k, ingestKeyOf({ source: 'webform', fields: { company: 'x', email: 'a@b.co' } }));
 });
 
-test('rateLimit allows the burst then blocks before the window resets', () => {
-  const key = `t-${Math.random()}`;
-  assert.equal(rateLimit(key, 2, 60_000), true);
-  assert.equal(rateLimit(key, 2, 60_000), true);
-  assert.equal(rateLimit(key, 2, 60_000), false);
-  bucketsReset(key);
+/* ---------- lead normalization (Phase D1) ---------- */
+
+test('normalizePhone produces consistent digits or E.164, never guessed countries', () => {
+  assert.equal(normalizePhone('+20 100 123 4567'), '+201001234567');
+  assert.equal(normalizePhone('00201001234567'), '+201001234567');
+  assert.equal(normalizePhone('0100 123 4567'), '01001234567');
+  assert.equal(normalizePhone('(20) 3-2'), null);
+  assert.equal(normalizePhone('+++'), null);
+  assert.equal(phoneFingerprint('+201001234567'), phoneFingerprint('0100 123 4567'));
+  assert.equal(phoneFingerprint('123'), null);
 });
-function bucketsReset(_key: string) {
-  /* separate keys are used per test; bucket lifetime is capped by window */
-}
+
+test('normalizeEmail is strict: real TLDs, no spaces, no double @', () => {
+  assert.equal(normalizeEmail(' A@B.CO '), 'a@b.co');
+  assert.equal(normalizeEmail('has space@b.co'), null);
+  assert.equal(normalizeEmail('a@@b.co'), null);
+  assert.equal(normalizeEmail('a@b'), null);
+  assert.equal(normalizeEmail('a@b..co'), null);
+  assert.equal(normalizeEmail('a@b.'), null);
+});
+
+test('free-mail providers never yield a company domain', () => {
+  assert.equal(domainFromEmail('ahmed@gmail.com'), null);
+  assert.equal(domainFromEmail('info@dentist.eg'), 'dentist.eg');
+  assert.equal(domainFromEmail(undefined), null);
+});
+
+test('normalizeWebsite fixes protocol and trailing noise, keeps hosts sane', () => {
+  assert.equal(normalizeWebsite('Example.eg/path?q=1#frag'), 'https://example.eg/path');
+  assert.equal(normalizeWebsite('http://example.eg/index.html'), 'http://example.eg');
+  assert.equal(normalizeWebsite('javascript:alert(1)'), null);
+  assert.equal(normalizeWebsite(''), null);
+});
 
 /* ---------- CSV ---------- */
 
@@ -88,7 +114,7 @@ test('parseCsv understands scraped Google-Maps exports (title/phone2/place colum
   const { rows, invalid } = parseCsv(csv);
   assert.equal(rows.length, 2);
   assert.equal(rows[0].company, 'Paragon Restaurant');
-  assert.equal(rows[0].phone, '00966 56 375 5477');
+  assert.equal(rows[0].phone, '+966563755477'); // 00-prefix normalizes to E.164
   assert.equal(rows[0].industry, 'restaurant');
   assert.equal(rows[0].location, 'Madinah, SA');
   assert.equal(rows[0].website, null);
@@ -97,6 +123,38 @@ test('parseCsv understands scraped Google-Maps exports (title/phone2/place colum
   assert.equal(rows[1].website, null);
   assert.ok((rows[1].notes ?? '').includes('maps.app.goo.gl'));
   assert.equal(invalid.length, 1); // Raduni: no phone2 value and only a Maps URL -> no contact channel
+});
+
+test('parseCsvText handles multiline quoted fields (D4)', () => {
+  const csv = 'Company,Email,Notes\n"Dentist,\nInc",front@dentist.eg,"line1\nline2"\nPlain,plain@x.eg,ok\n';
+  const { rows } = parseCsvText(csv);
+  assert.equal(rows.length, 3);
+  assert.deepEqual(rows[1], ['Dentist,\nInc', 'front@dentist.eg', 'line1\nline2']);
+  const parsed = parseCsv(csv);
+  assert.equal(parsed.rows.length, 2);
+  assert.equal(parsed.rows[0].company, 'Dentist,\nInc');
+});
+
+test('parseCsv keeps oversized exports explicit instead of truncating', () => {
+  const many = ['Company,Email', ...Array(5002).fill('X,x@x.co')].join('\n');
+  const { invalid } = parseCsv(many);
+  assert.equal(invalid[0].error?.startsWith('File too large'), true);
+});
+
+/* ---------- SSRF guard (D7) ---------- */
+
+test('assertSafeUrl blocks private, loopback and metadata targets without DNS', async () => {
+  for (const bad of [
+    'http://169.254.169.254/latest/meta-data',
+    'http://127.0.0.1:3000/admin',
+    'http://10.1.2.3/x',
+    'http://192.168.5.5/x',
+    'https://[::1]/',
+    'ftp://example.eg/file',
+    'http://localhost/login',
+  ]) {
+    await assert.rejects(() => assertSafeUrl(bad));
+  }
 });
 
 /* ---------- validators ---------- */

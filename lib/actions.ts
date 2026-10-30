@@ -51,6 +51,8 @@ import {
   acceptDeliverySchema,
 } from '@/lib/validators';
 import { notifyTaskAssigned, notifyBranded } from '@/lib/mail';
+import { safeFetch } from '@/lib/urlguard';
+import { domainFromEmail } from '@/lib/ingest';
 
 export type ActionResult = { ok: boolean; error?: string; message?: string };
 
@@ -219,11 +221,21 @@ export async function deleteLead(raw: unknown): Promise<ActionResult> {
   try {
     const u = await requireUser();
     const id = z.string().min(1).parse(raw);
+    // Any incoming leads that were promoted into this record are re-opened on delete (D5),
+    // so they never stay stuck in PROMOTED with no visible actions.
+    const linked = await db.incomingLead.findMany({ where: { finalLeadId: id }, select: { id: true, company: true } });
     const lead = await db.lead.delete({ where: { id } });
+    if (linked.length > 0) {
+      await db.incomingLead.updateMany({ where: { id: { in: linked.map((l) => l.id) } }, data: { processingStatus: 'UNDER_REVIEW', finalLeadId: null } });
+      for (const l of linked) {
+        await logActivity(u.id, 'Incoming lead re-opened', `${l.company} — its final lead was deleted`);
+      }
+    }
     await logActivity(u.id, 'Lead deleted', lead.name);
     revalidatePath('/workspace/leads');
+    revalidatePath('/workspace/leads/incoming');
     revalidatePath('/workspace');
-    return okRes('Lead deleted.');
+    return okRes(linked.length ? `Lead deleted. ${linked.length} promoted incoming lead(s) re-opened for review.` : 'Lead deleted.');
   } catch (e) {
     return fail(e);
   }
@@ -233,11 +245,49 @@ export async function bulkDeleteLeads(raw: unknown): Promise<ActionResult> {
   try {
     const u = await requireUser();
     const ids = z.array(z.string().min(1)).min(1).parse(raw);
+    const linked = await db.incomingLead.findMany({ where: { finalLeadId: { in: ids } }, select: { id: true } });
     const out = await db.lead.deleteMany({ where: { id: { in: ids } } });
-    await logActivity(u.id, 'Leads bulk-deleted', `${out.count} of ${ids.length} selected`);
+    if (linked.length > 0) {
+      await db.incomingLead.updateMany({ where: { id: { in: linked.map((l) => l.id) } }, data: { processingStatus: 'UNDER_REVIEW', finalLeadId: null } });
+    }
+    await logActivity(u.id, 'Leads bulk-deleted', `${out.count} of ${ids.length} selected${linked.length ? `; ${linked.length} incoming re-opened` : ''}`);
     revalidatePath('/workspace/leads');
+    revalidatePath('/workspace/leads/incoming');
     revalidatePath('/workspace');
-    return okRes(`${out.count} lead${out.count === 1 ? '' : 's'} deleted.`);
+    return okRes(`${out.count} lead${out.count === 1 ? '' : 's'} deleted.${linked.length ? ` ${linked.length} incoming re-opened.` : ''}`);
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+// D5: safe un-promote — clears the link and re-opens the incoming record.
+export async function unpromoteIncoming(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireUser();
+    const id = z.string().min(1).parse(raw);
+    const lead = await db.incomingLead.findUnique({
+      where: { id },
+      select: { id: true, company: true, processingStatus: true, finalLeadId: true, finalLead: { select: { name: true } } },
+    });
+    if (!lead) return { ok: false, error: 'Incoming lead not found.' };
+    if (lead.processingStatus !== 'PROMOTED' || !lead.finalLeadId) {
+      return { ok: false, error: 'Not promoted — nothing to un-promote.' };
+    }
+    await db.$transaction(async (tx) => {
+      await tx.incomingLead.update({
+        where: { id: lead.id },
+        data: { processingStatus: 'UNDER_REVIEW', finalLeadId: null, reviewedById: u.id },
+      });
+      await tx.activity.create({
+        data: {
+          message: 'Lead un-promoted',
+          detail: `${lead.company}: link to final lead "${lead.finalLead?.name ?? lead.finalLeadId}" cleared; reopened for review`,
+          userId: u.id,
+        },
+      });
+    });
+    revalidatePath('/workspace/leads/incoming');
+    return okRes('Un-promoted. The incoming lead is open for review again (final lead untouched).');
   } catch (e) {
     return fail(e);
   }
@@ -1387,7 +1437,7 @@ export async function runVerification(raw: unknown): Promise<ActionResult> {
       detail = valid ? 'Syntax OK (does not prove the mailbox exists)' : 'Invalid email syntax';
     } else if (input.method === 'DOMAIN_DNS') {
       method = 'DOMAIN_DNS';
-      const domain = domainOf(lead.website) ?? domainOf(lead.email) ?? lead.domain;
+      const domain = domainOf(lead.website) ?? domainFromEmail(lead.email) ?? lead.domain;
       if (!domain) return { ok: false, error: 'No website, email or domain to check.' };
       const ok = await dnsLookup(domain);
       result = ok ? 'DOMAIN_CHECKED' : 'VERIFICATION_FAILED';
@@ -1397,15 +1447,17 @@ export async function runVerification(raw: unknown): Promise<ActionResult> {
       const url = lead.website?.startsWith('http') ? lead.website : lead.website ? `https://${lead.website}` : null;
       if (!url) return { ok: false, error: 'No website URL on this lead.' };
       try {
-        const ac = new AbortController();
-        const timer = setTimeout(() => ac.abort(), 8000);
-        const res = await fetch(url, { signal: ac.signal, method: 'GET', headers: { 'user-agent': 'CorbleBot/1.0 (lead-verification)' }, redirect: 'follow' });
-        clearTimeout(timer);
-        result = res.ok ? 'WEBSITE_REACHABLE' : 'VERIFICATION_FAILED';
-        detail = `${res.ok ? 'Reached' : `HTTP ${res.status}`} ${new URL(res.url).host} ï¿½ reachability is not proof of relevance`;
-      } catch {
+        // SSRF-guarded fetch (D7): private/localhost/metadata targets and redirects
+        // into them are blocked; 8s deadline + 2MB response cap.
+        const out = await safeFetch(url, { timeoutMs: 8000, maxBytes: 2_000_000 });
+        result = out.ok ? 'WEBSITE_REACHABLE' : 'VERIFICATION_FAILED';
+        detail = out.aborted
+          ? `Request to ${out.finalHost} timed out or hit the redirect/size guard (8s)`
+          : `${out.ok ? 'Reached' : `HTTP ${out.status}`} ${out.finalHost} (${(out.bytes / 1024).toFixed(0)}KB) — reachability is not proof of relevance`;
+      } catch (err) {
         result = 'VERIFICATION_FAILED';
-        detail = `Request to ${url} failed or timed out (8s)`;
+        const why = err instanceof Error ? err.message.replace(/^Blocked: /, 'Blocked — ') : 'request failed';
+        detail = `Request to ${url} refused: ${why}`;
       }
     } else {
       method = 'MANUAL_REVIEW';
@@ -1575,9 +1627,27 @@ export async function promoteToFinal(raw: unknown): Promise<ActionResult> {
       if (lead.processingStatus === 'REJECTED') return { code: 'rejected' as const };
       // Validation: needs at least a company (already) and one contact channel.
       if (!lead.email && !lead.phone && !lead.website) return { code: 'nocontact' as const };
+      // Verification gate (D3): at least one meaningful check must have completed
+      // (manual review is the strongest). Admins may override, and it is logged.
+      const verifiedEnough =
+        lead.verification === 'SYNTAX_VALIDATED' ||
+        lead.verification === 'DOMAIN_CHECKED' ||
+        lead.verification === 'WEBSITE_REACHABLE' ||
+        lead.verification === 'CONTACT_VERIFIED' ||
+        lead.verification === 'MANUALLY_REVIEWED';
+      if (!verifiedEnough) {
+        if (u.role === 'ADMIN') {
+          await tx.activity.create({
+            data: { message: 'Promote override (unverified)', detail: `${lead.company}: promoted at "${lead.verification}" by ${u.name}`, userId: u.id },
+          });
+        } else {
+          return { code: 'unverified' as const, level: lead.verification };
+        }
+      }
 
-      // Duplicate detection against FINAL records.
-      const domain = domainOf(lead.website) ?? domainOf(lead.email) ?? lead.domain;
+      // Duplicate detection against FINAL records. Domain from a free-mail email is
+      // not a company domain — never use it (D1).
+      const domain = domainOf(lead.website) ?? domainFromEmail(lead.email) ?? lead.domain;
       const clash = await tx.lead.findFirst({
         where: {
           OR: [
@@ -1619,7 +1689,10 @@ export async function promoteToFinal(raw: unknown): Promise<ActionResult> {
     });
     if (!out || out.code === 'missing') return { ok: false, error: 'Incoming lead not found.' };
     if (out.code === 'rejected') return { ok: false, error: 'Lead was rejected. Restore it first.' };
-    if (out.code === 'nocontact') return { ok: false, error: 'Lead has no email, phone or website ï¿½ verify or research it first.' };
+    if (out.code === 'unverified') {
+      return { ok: false, error: `Verification level "${out.level === 'UNVERIFIED' ? 'unverified' : out.level}" is too low to promote — run a check first (or use an admin override).` };
+    }
+    if (out.code === 'nocontact') return { ok: false, error: 'Lead has no email, phone or website — verify or research it first.' };
     if (out.code === 'dupfinal') {
       return { ok: false, error: `A final lead already matches this record (see "${'name' in out && out.name ? out.name : 'existing'}"). Review before promoting.`, message: 'conflict' };
     }

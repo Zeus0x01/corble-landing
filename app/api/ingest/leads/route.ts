@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { timingSafeEqual } from 'crypto';
 import { db } from '@/lib/db';
-import { ingestSchema, normalizedSummary, ingestKeyOf, rateLimit } from '@/lib/ingest';
+import { ingestSchema, normalizedSummary, ingestKeyOf, rateLimit, phoneFingerprint } from '@/lib/ingest';
+import { pruneRateLimits } from '@/lib/ratelimit';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,9 +21,10 @@ function secretOk(req: NextRequest): boolean {
 
 export async function POST(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0] ?? 'anon';
-  if (!rateLimit(`ingest:${ip}`, 120)) {
+  if (!(await rateLimit(`ingest:${ip}`, 120))) {
     return Response.json({ ok: false, error: 'Rate limit exceeded (120/min).' }, { status: 429 });
   }
+  void pruneRateLimits();
   if (!process.env.INGEST_WEBHOOK_SECRET) {
     return Response.json({ ok: false, error: 'Integration not configured (INGEST_WEBHOOK_SECRET missing).' }, { status: 503 });
   }
@@ -60,11 +62,18 @@ export async function POST(req: NextRequest) {
         const existing = await tx.incomingLead.findUnique({ where: { ingestKey: key } });
         if (existing) return { created: false, id: existing.id };
       }
-      // Duplicate detection inside incoming pool by normalized email or domain.
+      // Duplicate detection inside incoming pool by normalized email, domain,
+      // or last-10-digit phone fingerprint (national vs international spelling).
       let dup = false;
       if (norm.email) {
         const d1 = await tx.incomingLead.findFirst({ where: { email: norm.email }, select: { id: true } });
         if (d1) dup = true;
+      }
+      const pfp = phoneFingerprint(norm.phone);
+      if (!dup && pfp) {
+        // Compare fingerprints instead of raw strings so +20100… and 0100… match.
+        const pool = await tx.incomingLead.findMany({ where: { phone: { not: null } }, select: { id: true, phone: true } });
+        if (pool.some((r) => phoneFingerprint(r.phone as string) === pfp)) dup = true;
       }
       if (!dup && norm.domain) {
         const d2 = await tx.incomingLead.findFirst({ where: { domain: norm.domain }, select: { id: true } });

@@ -468,6 +468,13 @@ model IngestionRun {
   @@index([workflowId])
 }
 
+// Shared rate-limit buckets (lib/ratelimit.ts) — survives serverless instance churn.
+model RateLimit {
+  key         String   @id
+  count       Int      @default(0)
+  windowStart DateTime
+}
+
 model LeadImportBatch {
   id            String    @id @default(cuid())
   filename      String

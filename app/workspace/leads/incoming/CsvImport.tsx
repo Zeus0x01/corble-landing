@@ -31,7 +31,15 @@ export default function CsvImport() {
       return;
     }
     setFilename(f.name);
-    setCsv(await f.text());
+    // Decode as UTF-8; Arabic scrape exports are often Windows-1256 — if the UTF-8
+    // run produced replacement characters, retry with windows-1256.
+    const buf = await f.arrayBuffer();
+    let text = new TextDecoder('utf-8').decode(buf);
+    if (text.includes('\uFFFD')) {
+      const wb = new TextDecoder('windows-1256').decode(buf);
+      if (!wb.includes('\uFFFD')) text = wb;
+    }
+    setCsv(text);
     setPreview(null);
   }
 

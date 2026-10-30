@@ -6,7 +6,7 @@
  * Env:
  *   RESEND_API_KEY  – required to actually send
  *   EMAIL_FROM      – e.g. "Corble <tasks@yourdomain.com>" (must be verified in Resend)
- *   APP_URL         – e.g. https://corble.vercel.app (for links in the email)
+ *   APP_URL         – e.g. https://corble.net (for links in the email)
  */
 
 type SendArgs = {
@@ -73,7 +73,7 @@ export async function notifyTaskAssigned(opts: {
   assignedBy: string;
   projectName?: string | null;
 }) {
-  const appUrl = process.env.APP_URL || process.env.NEXTAUTH_URL || 'https://corble.vercel.app';
+  const appUrl = process.env.APP_URL || process.env.NEXTAUTH_URL || 'https://corble.net';
   const due = opts.dueDate
     ? opts.dueDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
     : 'No due date';
@@ -122,7 +122,7 @@ type BrandedArgs = {
 
 /** One flexible branded email used by all event notifiers. Never throws. */
 export async function notifyBranded(a: BrandedArgs): Promise<{ ok: boolean; error?: string }> {
-  const appUrl = process.env.APP_URL || process.env.NEXTAUTH_URL || 'https://corble.vercel.app';
+  const appUrl = process.env.APP_URL || process.env.NEXTAUTH_URL || 'https://corble.net';
   const subject = a.message.replace(/<[^>]*>/g, '').slice(0, 90);
   const html = `
   <div style="font-family:Inter,system-ui,sans-serif;max-width:560px;margin:0 auto;padding:24px;background:#0a0c10;color:#f2f5f9;border-radius:12px">

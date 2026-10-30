@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { dbUser } from '@/lib/guard';
-import { parseCsv } from '@/lib/ingest';
+import { parseCsv, normalizeEmail, normalizePhone, phoneFingerprint, normalizeWebsite, isFreeMailDomain } from '@/lib/ingest';
 import { domainOf } from '@/lib/ingest';
 
 export const dynamic = 'force-dynamic';
@@ -31,28 +31,39 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // COMMIT: dedupe within pool (normalized email/domain) + inside the file itself, then bulk-insert.
+    // COMMIT: dedupe within pool (normalized email/domain + phone fingerprint)
+    // + inside the file itself, then bulk-insert.
     const batch = await db.leadImportBatch.create({
       data: { filename: (bodyJson.filename ?? 'import.csv').slice(0, 190), totalRows: rows.length + invalid.length, importedById: userId },
     });
 
-    const [existingEmails, existingDomains] = await Promise.all([
+    const [existingEmails, existingDomains, existingPhones] = await Promise.all([
       db.incomingLead.findMany({ where: { email: { not: null } }, select: { email: true } }),
       db.incomingLead.findMany({ where: { domain: { not: null } }, select: { domain: true } }),
+      db.incomingLead.findMany({ where: { phone: { not: null } }, select: { phone: true } }),
     ]);
     const seenEmails = new Set(existingEmails.map((r) => r.email as string));
     const seenDomains = new Set(existingDomains.map((r) => r.domain as string));
+    const seenPhones = new Set(existingPhones.map((r) => phoneFingerprint(r.phone as string)).filter(Boolean));
 
     const toCreate: Prisma.IncomingLeadCreateManyInput[] = [];
     let createdCount = 0;
     let dupCount = 0;
     for (const row of rows) {
-      const email = row.email && row.email.includes('@') ? row.email.toLowerCase() : null;
-      const website = row.website ? (/^https?:\/\//i.test(row.website) ? row.website : `https://${row.website}`) : null;
-      const domain = domainOf(row.domain) ?? domainOf(website);
-      const dup = (email && seenEmails.has(email)) || (domain && seenDomains.has(domain));
+      const email = normalizeEmail(row.email);
+      const website = normalizeWebsite(row.website);
+      // A gmail/yahoo/… email is a person's inbox, never the company domain (D1).
+      const rawDomain = domainOf(row.domain) ?? domainOf(website);
+      const domain = rawDomain && !isFreeMailDomain(rawDomain) ? rawDomain : null;
+      const phone = normalizePhone(row.phone);
+      const pfp = phoneFingerprint(phone);
+      const dup =
+        (email && seenEmails.has(email)) ||
+        (domain && seenDomains.has(domain)) ||
+        (pfp && seenPhones.has(pfp));
       if (email) seenEmails.add(email);
       if (domain) seenDomains.add(domain);
+      if (pfp) seenPhones.add(pfp);
       if (dup) {
         dupCount++;
         continue;
@@ -61,7 +72,7 @@ export async function POST(req: NextRequest) {
         company: row.company.slice(0, 160),
         contactPerson: row.contactPerson,
         email,
-        phone: row.phone,
+        phone,
         website,
         domain,
         industry: row.industry,
@@ -71,7 +82,7 @@ export async function POST(req: NextRequest) {
         batchId: String(batch.id),
         rawPayload: row as unknown as object,
         parsed: row as unknown as object,
-        normalized: { email, domain, website } as object,
+        normalized: { email, domain, website, phone } as object,
         processingStatus: 'NEW',
         importBatchId: batch.id,
         researchNotes: row.notes ?? null,
