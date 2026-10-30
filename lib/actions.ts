@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { after } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import type {
   LeadStatus,
   ProjectStatus,
@@ -342,7 +343,7 @@ export async function convertLead(raw: unknown): Promise<ActionResult> {
 
 export async function createProject(raw: unknown): Promise<ActionResult> {
   try {
-    const u = await requireUser();
+    const u = await requireAdmin();
     const input = projectSchema.parse(raw);
     const p = await db.project.create({
       data: {
@@ -368,7 +369,7 @@ export async function createProject(raw: unknown): Promise<ActionResult> {
 
 export async function updateProject(raw: unknown): Promise<ActionResult> {
   try {
-    const u = await requireUser();
+    const u = await requireAdmin();
     const input = projectSchema.parse(raw);
     const id = (raw as { id?: string }).id ?? '';
     const p = await db.project.update({
@@ -396,7 +397,7 @@ export async function updateProject(raw: unknown): Promise<ActionResult> {
 
 export async function setProjectStatus(raw: unknown): Promise<ActionResult> {
   try {
-    const u = await requireUser();
+    const u = await requireAdmin();
     const { id, status } = projectStatusSchema.parse(raw);
     const p = await db.project.update({ where: { id }, data: { status: status as ProjectStatus } });
     await logActivity(u.id, 'Project status changed', `${p.name} â†’ ${status}`);
@@ -410,7 +411,7 @@ export async function setProjectStatus(raw: unknown): Promise<ActionResult> {
 
 export async function deleteProject(raw: unknown): Promise<ActionResult> {
   try {
-    const u = await requireUser();
+    const u = await requireAdmin();
     const id = z.string().min(1).parse(raw);
     const p = await db.project.delete({ where: { id } });
     await logActivity(u.id, 'Project deleted', p.name);
@@ -459,7 +460,14 @@ export async function updateTask(raw: unknown): Promise<ActionResult> {
     const u = await requireUser();
     const input = taskSchema.parse(raw);
     const id = (raw as { id?: string }).id ?? '';
-    const before = await db.task.findUnique({ where: { id }, select: { title: true, assigneeId: true, originalOwnerId: true } });
+    const before = await db.task.findUnique({ where: { id }, select: { title: true, assigneeId: true, originalOwnerId: true, createdById: true } });
+    if (!before) return { ok: false, error: 'Task not found.' };
+    if (u.role !== 'ADMIN' && ![before.assigneeId, before.originalOwnerId, before.createdById].includes(u.id)) {
+      return { ok: false, error: 'Only people involved in this task can edit it.' };
+    }
+    if (input.assigneeId !== before.assigneeId && u.role !== 'ADMIN' && before.createdById !== u.id && before.originalOwnerId !== u.id) {
+      return { ok: false, error: 'Only the task creator, original owner, or an admin can reassign it.' };
+    }
     const prev = before;
     const t = await db.task.update({
       where: { id },
@@ -514,7 +522,14 @@ export async function updateTaskInline(raw: unknown): Promise<ActionResult> {
   try {
     const u = await requireUser();
     const { id, status, priority, assigneeId } = taskInlineSchema.parse(raw);
-    const prev = await db.task.findUnique({ where: { id }, select: { assigneeId: true, title: true } });
+    const prev = await db.task.findUnique({ where: { id }, select: { assigneeId: true, title: true, originalOwnerId: true, createdById: true } });
+    if (!prev) return { ok: false, error: 'Task not found.' };
+    if (u.role !== 'ADMIN' && ![prev.assigneeId, prev.originalOwnerId, prev.createdById].includes(u.id)) {
+      return { ok: false, error: 'Only people involved in this task can edit it.' };
+    }
+    if (assigneeId !== undefined && (assigneeId || null) !== prev.assigneeId && u.role !== 'ADMIN' && prev.createdById !== u.id && prev.originalOwnerId !== u.id) {
+      return { ok: false, error: 'Only the task creator, original owner, or an admin can reassign it.' };
+    }
     const t = await db.task.update({
       where: { id },
       data: {
@@ -566,6 +581,11 @@ export async function deleteTask(raw: unknown): Promise<ActionResult> {
   try {
     const u = await requireUser();
     const id = z.string().min(1).parse(raw);
+    const existing = await db.task.findUnique({ where: { id }, select: { assigneeId: true, originalOwnerId: true, createdById: true } });
+    if (!existing) return { ok: false, error: 'Task not found.' };
+    if (u.role !== 'ADMIN' && ![existing.assigneeId, existing.originalOwnerId, existing.createdById].includes(u.id)) {
+      return { ok: false, error: 'Only people involved in this task can delete it.' };
+    }
     // Soft-delete: comments, handover history and deliverables must survive.
     const t = await db.task.update({ where: { id }, data: { deletedAt: new Date(), eligibleForHandover: false } });
     // Resolve pending handover requests safely now the task is gone.
@@ -606,7 +626,7 @@ export async function deleteTask(raw: unknown): Promise<ActionResult> {
 
 export async function createFinance(raw: unknown): Promise<ActionResult> {
   try {
-    const u = await requireUser();
+    const u = await requireAdmin();
     const input = financeSchema.parse(raw);
     const f = await db.financeRecord.create({
       data: {
@@ -629,7 +649,7 @@ export async function createFinance(raw: unknown): Promise<ActionResult> {
 
 export async function updateFinance(raw: unknown): Promise<ActionResult> {
   try {
-    const u = await requireUser();
+    const u = await requireAdmin();
     const input = financeSchema.parse(raw);
     const id = (raw as { id?: string }).id ?? '';
     const f = await db.financeRecord.update({
@@ -654,7 +674,7 @@ export async function updateFinance(raw: unknown): Promise<ActionResult> {
 
 export async function deleteFinance(raw: unknown): Promise<ActionResult> {
   try {
-    const u = await requireUser();
+    const u = await requireAdmin();
     const id = z.string().min(1).parse(raw);
     const f = await db.financeRecord.delete({ where: { id } });
     await logActivity(u.id, 'Finance record deleted', f.description);
@@ -815,6 +835,9 @@ export async function deleteFile(raw: unknown): Promise<ActionResult> {
     const id = z.string().min(1).parse(raw);
     const asset = await db.fileAsset.findUnique({ where: { id } });
     if (!asset) return { ok: false, error: 'File not found.' };
+    if (u.role !== 'ADMIN' && asset.uploadedById !== u.id) {
+      return { ok: false, error: 'Only the uploader or an admin can delete this file.' };
+    }
 
     try {
       const fs = await import('fs');
@@ -838,7 +861,7 @@ export async function deleteFile(raw: unknown): Promise<ActionResult> {
 
 export async function useTemplate(raw: unknown): Promise<ActionResult> {
   try {
-    const u = await requireUser();
+    const u = await requireAdmin();
     const input = templateUseSchema.parse(raw);
     const template = await db.template.findUnique({ where: { id: input.templateId } });
     if (!template) return { ok: false, error: 'Template not found.' };
@@ -1349,24 +1372,35 @@ export async function submitNewVersion(raw: unknown): Promise<ActionResult> {
     if (old.createdById !== u.id && u.role !== 'ADMIN') {
       return { ok: false, error: 'Only the submitter (or an admin) can add versions.' };
     }
-    const nextVersion = (old.versions[0]?.version ?? 0) + 1;
-    await db.deliverable.update({
-      where: { id: old.id },
-      data: {
-        status: 'UNDER_REVIEW',
-        currentVersion: nextVersion,
-        versions: {
-          create: {
-            version: nextVersion,
-            body: input.body,
-            externalUrl: input.externalUrl ?? null,
-            fileId: input.fileId ?? null,
-            status: 'UNDER_REVIEW',
-            submittedById: u.id,
-          },
-        },
-      },
-    });
+    let nextVersion = 0;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        await db.$transaction(async (tx) => {
+          const latest = await tx.deliverableVersion.findFirst({ where: { deliverableId: old.id }, orderBy: { version: 'desc' }, select: { version: true } });
+          nextVersion = (latest?.version ?? 0) + 1;
+          await tx.deliverable.update({
+            where: { id: old.id },
+            data: {
+              status: 'UNDER_REVIEW',
+              currentVersion: nextVersion,
+              versions: {
+                create: {
+                  version: nextVersion,
+                  body: input.body,
+                  externalUrl: input.externalUrl ?? null,
+                  fileId: input.fileId ?? null,
+                  status: 'UNDER_REVIEW',
+                  submittedById: u.id,
+                },
+              },
+            },
+          });
+        });
+        break;
+      } catch (error) {
+        if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002' || attempt === 2) throw error;
+      }
+    }
     await logActivity(u.id, 'Deliverable version submitted', `${old.title} v${nextVersion}`);
     revalidatePath('/workspace/deliverables');
     return okRes(`Version ${nextVersion} submitted.`);
@@ -1381,9 +1415,18 @@ export async function reviewDeliverable(raw: unknown): Promise<ActionResult> {
     const input = deliverableReviewSchema.parse(raw);
     const version = await db.deliverableVersion.findUnique({
       where: { id: input.versionId },
-      include: { deliverable: { select: { id: true, title: true, createdById: true, taskId: true } } },
+      include: { deliverable: { select: { id: true, title: true, createdById: true, taskId: true, currentVersion: true, status: true, phase: { select: { project: { select: { ownerId: true } } } }, task: { select: { createdById: true, project: { select: { ownerId: true } } } } } } },
     });
     if (!version) return { ok: false, error: 'Version not found.' };
+    if (version.version !== version.deliverable.currentVersion || !['SUBMITTED', 'UNDER_REVIEW', 'CHANGES_REQUESTED'].includes(version.deliverable.status)) {
+      return { ok: false, error: 'Only the current pending version can be reviewed.' };
+    }
+    const reviewerAllowed =
+      u.role === 'ADMIN' ||
+      version.deliverable.phase?.project.ownerId === u.id ||
+      version.deliverable.task?.project?.ownerId === u.id ||
+      version.deliverable.task?.createdById === u.id;
+    if (!reviewerAllowed) return { ok: false, error: 'Only the project owner or an admin can review deliverables.' };
     if (version.submittedById === u.id && u.role !== 'ADMIN') {
       return { ok: false, error: 'You cannot review your own submission.' };
     }
@@ -1737,11 +1780,13 @@ export async function createAutomation(raw: unknown): Promise<ActionResult> {
   try {
     const u = await requireUser();
     const input = automationSchema.parse(raw);
+    const ownerId = input.ownerId ?? u.id;
+    if (u.role !== 'ADMIN' && ownerId !== u.id) return { ok: false, error: 'Only admins can assign another automation owner.' };
     const p = await db.automationProject.create({
       data: {
         name: input.name,
         description: input.description,
-        ownerId: u.id,
+        ownerId,
         maintainerId: input.maintainerId ?? null,
         githubRepo: input.githubRepo ?? null,
         websiteProjectId: input.websiteProjectId ?? null,
@@ -1815,14 +1860,22 @@ export async function submitPhase(raw: unknown): Promise<ActionResult> {
       return { ok: false, error: `Phase "${phase.dependsOn.title}" must be approved first ï¿½ its prerequisite is not satisfied.` };
     }
     if (phase.status === 'APPROVED') return { ok: false, error: 'Phase is already approved. Add a new phase instead.' };
-    const lastVersion = await db.phaseSubmission.findFirst({ where: { phaseId: phase.id }, orderBy: { version: 'desc' } });
-    const version = (lastVersion?.version ?? 0) + 1;
     const reviewerAdmin = await db.user.findFirst({ where: { role: 'ADMIN', isActive: true } });
-    await db.$transaction(async (tx) => {
-      await tx.phaseSubmission.create({ data: { phaseId: phase.id, version, notes: input.notes, authorId: u.id } });
-      await tx.automationPhase.update({ where: { id: phase.id }, data: { status: 'SUBMITTED_FOR_REVIEW' } });
-      await tx.automationProject.update({ where: { id: phase.projectId }, data: { status: phase.project.status === 'PLANNING' ? 'IN_PROGRESS' : undefined } });
-    });
+    let version = 0;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        await db.$transaction(async (tx) => {
+          const lastVersion = await tx.phaseSubmission.findFirst({ where: { phaseId: phase.id }, orderBy: { version: 'desc' }, select: { version: true } });
+          version = (lastVersion?.version ?? 0) + 1;
+          await tx.phaseSubmission.create({ data: { phaseId: phase.id, version, notes: input.notes, authorId: u.id } });
+          await tx.automationPhase.update({ where: { id: phase.id }, data: { status: 'SUBMITTED_FOR_REVIEW' } });
+          await tx.automationProject.update({ where: { id: phase.projectId }, data: { status: phase.project.status === 'PLANNING' ? 'IN_PROGRESS' : undefined } });
+        });
+        break;
+      } catch (error) {
+        if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002' || attempt === 2) throw error;
+      }
+    }
     if (reviewerAdmin) {
       await notify(reviewerAdmin.id, 'PHASE_SUBMITTED', `Phase "${phase.title}" v${version} submitted for review`, input.notes.slice(0, 160), `/workspace/automation/${phase.projectId}`);
       if (reviewerAdmin.id !== u.id) {
@@ -1852,9 +1905,13 @@ export async function reviewPhase(raw: unknown): Promise<ActionResult> {
     const input = phaseReviewSchema.parse(raw);
     const submission = await db.phaseSubmission.findUnique({
       where: { id: input.submissionId },
-      include: { phase: { select: { id: true, title: true, projectId: true, order: true } } },
+      include: { phase: { select: { id: true, title: true, projectId: true, order: true, status: true, project: { select: { ownerId: true } }, submissions: { orderBy: { version: 'desc' }, take: 1, select: { id: true } } } } },
     });
     if (!submission) return { ok: false, error: 'Submission not found.' };
+    if (submission.phase.status !== 'SUBMITTED_FOR_REVIEW' || submission.phase.submissions[0]?.id !== submission.id) {
+      return { ok: false, error: 'Only the current pending phase submission can be reviewed.' };
+    }
+    if (u.role !== 'ADMIN' && submission.phase.project.ownerId !== u.id) return { ok: false, error: 'Only the automation project owner or an admin can review phases.' };
     if (submission.authorId === u.id && u.role !== 'ADMIN') return { ok: false, error: 'You cannot review your own phase submission.' };
     if (submission.authorId === u.id && u.role === 'ADMIN') {
       await logActivity(u.id, 'Self-review override (phase)', `${submission.phase.title} v${submission.version} — reviewed own submission as admin`);
@@ -1905,11 +1962,8 @@ export async function assembleDelivery(raw: unknown): Promise<ActionResult> {
     });
     if (!project) return { ok: false, error: 'Project not found.' };
     if (u.id !== project.ownerId && u.role !== 'ADMIN') return { ok: false, error: 'Only the project owner (or an admin) can assemble the final delivery.' };
-    if (project.phases.some((p) => p.status === 'SUBMITTED_FOR_REVIEW' || p.status === 'CHANGES_REQUESTED')) {
-      return { ok: false, error: 'All phases must be resolved (approved or explicitly not required) before delivery.' };
-    }
-    if (project.phases.length > 0 && project.phases.filter((p) => p.status === 'APPROVED').length === 0) {
-      return { ok: false, error: 'No approved phases to deliver.' };
+    if (project.phases.length === 0 || project.phases.some((p) => p.status !== 'APPROVED')) {
+      return { ok: false, error: 'Every phase must be approved before delivery can be assembled.' };
     }
     const requiredCount = project.phases.length;
     const approvedCount = project.phases.filter((p) => p.status === 'APPROVED').length;
@@ -1952,12 +2006,14 @@ export async function acceptDelivery(raw: unknown): Promise<ActionResult> {
   try {
     const u = await requireUser();
     const input = acceptDeliverySchema.parse(raw);
-    const project = await db.automationProject.findUnique({ where: { id: input.projectId }, select: { id: true, name: true, finalDelivery: true, ownerId: true, deliveryAcceptedById: true } });
+    const project = await db.automationProject.findUnique({ where: { id: input.projectId }, select: { id: true, name: true, finalDelivery: true, ownerId: true, maintainerId: true, deliveryAcceptedById: true } });
     if (!project) return { ok: false, error: 'Project not found.' };
     const pending = (project.finalDelivery as { pending?: boolean } | null)?.pending;
     if (!pending) return { ok: false, error: 'No pending delivery package.' };
     if (project.deliveryAcceptedById) return { ok: false, error: 'Delivery already accepted.' };
-    if (project.ownerId === u.id && u.role !== 'ADMIN') return { ok: false, error: 'The designated reviewer must accept the delivery (project owner cannot self-accept unless admin).' };
+    if (u.role !== 'ADMIN' && (!project.maintainerId || project.maintainerId !== u.id)) {
+      return { ok: false, error: 'Only the designated maintainer or an admin can accept the delivery.' };
+    }
     await db.automationProject.update({
       where: { id: project.id },
       data: {

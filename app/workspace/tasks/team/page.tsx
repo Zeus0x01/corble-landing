@@ -10,6 +10,13 @@ export default async function TeamTasksPage({ searchParams }: { searchParams: Pr
   const session = await auth();
   const meId = session?.user?.id as string;
   const role = (session?.user?.role ?? 'MEMBER') as string;
+  if (role !== 'ADMIN') {
+    return (
+      <div className="empty">
+        Team Tasks is available to administrators only. Use <a href="/workspace/tasks">My Tasks</a> for your assigned work.
+      </div>
+    );
+  }
   const sp = await searchParams;
   const query = (sp.q ?? '').trim();
   const reason = sp.reason ?? 'all';

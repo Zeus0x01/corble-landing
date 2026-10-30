@@ -1,4 +1,5 @@
 import { db } from '@/lib/db';
+import { auth } from '@/lib/auth';
 import { formatMoney, formatDate, labelize, toISODate, progressTone } from '@/lib/format';
 import { createProject, deleteProject, setProjectStatus, updateProject } from '@/lib/actions';
 import InlineSelect from '@/components/InlineSelect';
@@ -32,6 +33,8 @@ function projectFields(
 }
 
 export default async function ProjectsPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  const session = await auth();
+  const isAdmin = session?.user?.role === 'ADMIN';
   const { q } = await searchParams;
   const query = (q ?? '').trim();
 
@@ -54,12 +57,14 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
           <h2>Delivery board</h2>
           <div className="sub">Status, progress, owner, budget — instant saves.</div>
         </div>
-        <ModalForm
-          title="New project"
-          trigger="＋ New project"
-          action={createProject}
-          fields={projectFields(leadList, owners).filter((f) => f.name !== 'id')}
-        />
+        {isAdmin ? (
+          <ModalForm
+            title="New project"
+            trigger="＋ New project"
+            action={createProject}
+            fields={projectFields(leadList, owners).filter((f) => f.name !== 'id')}
+          />
+        ) : null}
       </div>
 
       <div className="tablewrap">
@@ -77,14 +82,16 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
                   <td>{p.clientName}{p.lead ? <div className="itemsub"><a href={`/workspace/leads?lead=${encodeURIComponent(p.lead.leadCode)}`} style={{ color: 'var(--purple)' }}>{p.lead.leadCode}</a></div> : null}</td>
                   <td>{p.owner?.name ?? '—'}</td>
                   <td>
-                    <InlineSelect
-                      value={p.status}
-                      field="status"
-                      id={p.id}
-                      action={setProjectStatus}
-                      options={STATUS.map((s) => ({ value: s, label: labelize(s) }))}
-                      alwaysNotify
-                    />
+                    {isAdmin ? (
+                      <InlineSelect
+                        value={p.status}
+                        field="status"
+                        id={p.id}
+                        action={setProjectStatus}
+                        options={STATUS.map((s) => ({ value: s, label: labelize(s) }))}
+                        alwaysNotify
+                      />
+                    ) : <span className="pill">{labelize(p.status)}</span>}
                   </td>
                   <td>
                     <div className="track" style={{ width: 90, display: 'inline-block' }}>
@@ -98,14 +105,18 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
                     {(filesByProject.get(p.id) ?? 0) > 0 ? (
                       <a className="btn sq" href={`/workspace/files?tab=project&id=${p.id}`} title={`Open ${filesByProject.get(p.id)} file(s)`}>▤ {filesByProject.get(p.id)}</a>
                     ) : null}
-                    <ModalForm
-                      title="Edit project"
-                      trigger="✎"
-                      triggerClass="btn sq"
-                      action={updateProject}
-                      fields={projectFields(leadList, owners, { id: p.id, name: p.name, clientName: p.clientName, leadId: p.leadId, service: p.service, status: p.status, progress: p.progress, dueDate: p.dueDate, ownerId: p.ownerId, budget: p.budget })}
-                    />
-                    <ConfirmAction action={deleteProject} payload={p.id} label="Delete project" />
+                    {isAdmin ? (
+                      <>
+                        <ModalForm
+                          title="Edit project"
+                          trigger="✎"
+                          triggerClass="btn sq"
+                          action={updateProject}
+                          fields={projectFields(leadList, owners, { id: p.id, name: p.name, clientName: p.clientName, leadId: p.leadId, service: p.service, status: p.status, progress: p.progress, dueDate: p.dueDate, ownerId: p.ownerId, budget: p.budget })}
+                        />
+                        <ConfirmAction action={deleteProject} payload={p.id} label="Delete project" />
+                      </>
+                    ) : null}
                   </td>
                 </tr>
               ))

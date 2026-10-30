@@ -1,4 +1,5 @@
 import { db } from '@/lib/db';
+import { auth } from '@/lib/auth';
 import { formatMoney, formatDate, labelize, toISODate } from '@/lib/format';
 import { createFinance, deleteFinance, updateFinance } from '@/lib/actions';
 import ConfirmAction from '@/components/ConfirmAction';
@@ -24,6 +25,8 @@ function financeFields(
 }
 
 export default async function FinancePage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  const session = await auth();
+  const isAdmin = session?.user?.role === 'ADMIN';
   const { q } = await searchParams;
   const query = (q ?? '').trim();
 
@@ -53,12 +56,12 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
             <span className="down">Expenses {formatMoney(expenses, currency)}</span>
           </div>
         </div>
-        <ModalForm
+        {isAdmin ? <ModalForm
           title="Add finance record"
           trigger="＋ Add record"
           action={createFinance}
           fields={financeFields(projects, currency).filter((f) => f.name !== 'id')}
-        />
+        /> : null}
       </div>
 
       <div className="tablewrap">
@@ -79,14 +82,14 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
                   <td>{formatDate(f.date)}</td>
                   <td><div className="itemsub">{f.project?.name ?? '—'}</div></td>
                   <td style={{ display: 'flex', gap: 6 }}>
-                    <ModalForm
+                    {isAdmin ? <ModalForm
                       title="Edit record"
                       trigger="✎"
                       triggerClass="btn sq"
                       action={updateFinance}
                       fields={financeFields(projects, currency, { id: f.id, type: f.type, description: f.description, amount: f.amount, status: f.status, date: f.date, projectId: f.projectId })}
-                    />
-                    <ConfirmAction action={deleteFinance} payload={f.id} label="Delete record" />
+                    /> : null}
+                    {isAdmin ? <ConfirmAction action={deleteFinance} payload={f.id} label="Delete record" /> : null}
                   </td>
                 </tr>
               ))

@@ -40,7 +40,8 @@ export default async function AutomationPage() {
   function progressOf(phases: { status: string }[]): number {
     if (phases.length === 0) return 0;
     const approved = phases.filter((p) => p.status === 'APPROVED').length;
-    return Math.round((approved / phases.length) * 100);
+    const reviewing = phases.filter((p) => p.status === 'SUBMITTED_FOR_REVIEW' || p.status === 'CHANGES_REQUESTED').length;
+    return Math.round(((approved + reviewing * 0.5) / phases.length) * 100);
   }
 
   return (
@@ -82,9 +83,9 @@ export default async function AutomationPage() {
                       <div style={{ width: 180, height: 6, background: 'rgba(128,128,128,.2)', borderRadius: 4 }}>
                         <div style={{ width: `${progress}%`, height: 6, background: 'var(--purple)', borderRadius: 4 }} />
                       </div>
-                      <span className="itemsub">{progress}% approved</span>
+                      <span className="itemsub">{progress}% progress</span>
                     </td>
-                    <td>{p.websiteProject ? <Link href={`/workspace/projects/${p.websiteProject.id}`} style={{ color: 'var(--purple)' }}>{p.websiteProject.name}</Link> : '—'}</td>
+                    <td>{p.websiteProject ? <Link href="/workspace/projects" style={{ color: 'var(--purple)' }}>{p.websiteProject.name}</Link> : '—'}</td>
                     <td>
                       <span className="pill">{labelize(p.status)}</span>
                       {p.finalDelivery ? <div className="itemsub">delivered</div> : null}

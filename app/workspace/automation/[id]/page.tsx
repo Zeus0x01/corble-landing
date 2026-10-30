@@ -69,7 +69,7 @@ export default async function AutomationProjectPage({ params }: { params: Promis
             owner {project.owner?.name ?? '—'} · maintainer {project.maintainer?.name ?? 'none'} · {project.phases.length} phases ·{' '}
             <Link href="/workspace/automation" style={{ color: 'var(--purple)' }}>all projects →</Link>
             {project.githubRepo ? <> · repo {project.githubRepo}</> : null}
-            {project.websiteProject ? <> · <Link href={`/workspace/projects/${project.websiteProject.id}`} style={{ color: 'var(--purple)' }}>{project.websiteProject.name}</Link></> : null}
+            {project.websiteProject ? <> · <Link href="/workspace/projects" style={{ color: 'var(--purple)' }}>{project.websiteProject.name}</Link></> : null}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -152,20 +152,22 @@ export default async function AutomationProjectPage({ params }: { params: Promis
         </table>
       </div>
 
-      {isOwner ? (
+      {isOwner || (delivery && !deliveryAccepted && (role === 'ADMIN' || project.maintainerId === me)) ? (
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-          <ModalForm
-            title="Assemble final delivery"
-            trigger="⇉ Assemble final delivery"
-            action={assembleDelivery}
-            fields={[
-              { label: 'Repo URL (GitHub release, production repo…)', name: 'repoUrl', value: '' },
-              { label: 'Website URL', name: 'websiteUrl', value: '' },
-              { label: 'Handover notes — what the client receives', name: 'notes', type: 'text', full: true, value: '' },
-            ]}
-            hidden={{ projectId: project.id }}
-          />
-          <AcceptDelivery projectId={project.id} disabled={Boolean(!delivery || deliveryAccepted)} />
+          {isOwner ? (
+            <ModalForm
+              title="Assemble final delivery"
+              trigger="⇉ Assemble final delivery"
+              action={assembleDelivery}
+              fields={[
+                { label: 'Repo URL (GitHub release, production repo…)', name: 'repoUrl', value: '' },
+                { label: 'Website URL', name: 'websiteUrl', value: '' },
+                { label: 'Handover notes — what the client receives', name: 'notes', type: 'text', full: true, value: '' },
+              ]}
+              hidden={{ projectId: project.id }}
+            />
+          ) : null}
+          <AcceptDelivery projectId={project.id} disabled={Boolean(!delivery || deliveryAccepted || (role !== 'ADMIN' && project.maintainerId !== me))} />
         </div>
       ) : null}
     </>
