@@ -6,6 +6,7 @@ import { labelize, formatDate } from '@/lib/format';
 import { submitDeliverable, submitNewVersion } from '@/lib/actions';
 import ModalForm from '@/components/ModalForm';
 import ReviewForm from './ReviewForm';
+import SubmitDeliverableForm from './SubmitDeliverableForm';
 import type { FieldSpec } from '@/lib/validators';
 
 export const dynamic = 'force-dynamic';
@@ -51,15 +52,6 @@ export default async function DeliverablesPage({ searchParams }: { searchParams:
     }),
   ]);
 
-  const hasTargets = myTasks.length > 0 || myPhases.length > 0;
-  const fields = (): FieldSpec[] => [
-    { label: 'Task — deliver work done inside a task', name: 'taskId', type: 'select', full: true, options: [{ value: '', label: '— none —' }, ...myTasks.map((t) => ({ value: t.id, label: `${t.title} (${labelize(t.status)})` }))], value: '' },
-    { label: 'Automation phase — deliver a workflow phase', name: 'phaseId', type: 'select', full: true, options: [{ value: '', label: '— none —' }, ...myPhases.map((p) => ({ value: p.id, label: `${p.title} · ${p.project.name}` }))], value: '' },
-    { label: 'Deliverable title', name: 'title', required: true, value: '' },
-    { label: 'Link (Google Doc, repo, design file…)', name: 'externalUrl', value: '' },
-    { label: 'Body — what you delivered', name: 'body', type: 'text', full: true, required: true, value: '' },
-  ];
-
   const versionFields = (d: { id: string; title: string; latest: string }): FieldSpec[] => [
     { label: 'Deliverable', name: 'id', type: 'text', required: true, full: true, value: d.id },
     { label: 'Link (updated work)', name: 'externalUrl', value: d.latest },
@@ -84,11 +76,10 @@ export default async function DeliverablesPage({ searchParams }: { searchParams:
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {status && <a className="btn" href="/workspace/deliverables">Clear filter</a>}
-          <ModalForm
-            title={hasTargets ? 'Submit deliverable' : 'No open tasks or phases to deliver'}
-            trigger="＋ Submit deliverable"
+          <SubmitDeliverableForm
+            tasks={myTasks.map((t) => ({ id: t.id, label: `${t.title} (${labelize(t.status)})` }))}
+            phases={myPhases.map((p) => ({ id: p.id, label: `${p.title} · ${p.project.name}` }))}
             action={submitDeliverable}
-            fields={fields()}
           />
         </div>
       </div>
