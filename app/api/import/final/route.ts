@@ -143,13 +143,19 @@ async function postImport(req: NextRequest) {
 
   const toCreate: string[] = [];
   const toCreateData: Prisma.LeadCreateManyInput[] = [];
+  const importedNames = new Set<string>();
+  const importedEmails = new Set<string>();
+  const importedPhones = new Set<string>();
   for (const m of mapped) {
-    if (dupNames.has(normalized(m.name)) || (m.email && dupEmails.has(normalized(m.email))) || (m.phone && dupPhones.has(normalized(m.phone)))) {
+    const nameKey = normalized(m.name);
+    const emailKey = m.email ? normalized(m.email) : '';
+    const phoneKey = m.phone ? normalized(m.phone) : '';
+    if (importedNames.has(nameKey) || (emailKey && importedEmails.has(emailKey)) || (phoneKey && importedPhones.has(phoneKey))) {
       continue;
     }
-    dupNames.add(normalized(m.name));
-    if (m.email) dupEmails.add(normalized(m.email));
-    if (m.phone) dupPhones.add(normalized(m.phone));
+    importedNames.add(nameKey);
+    if (emailKey) importedEmails.add(emailKey);
+    if (phoneKey) importedPhones.add(phoneKey);
     toCreateData.push({
       leadCode: '',
       name: m.name,
