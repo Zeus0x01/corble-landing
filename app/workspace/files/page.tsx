@@ -49,6 +49,7 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
         project: { select: { id: true, name: true } },
         task: { select: { id: true, title: true, project: { select: { name: true } } } },
         leadLinks: { where: { kind: 'LEAD' }, include: { lead: { select: { id: true, name: true } } } },
+        leadDataset: { select: { leads: { select: { id: true, name: true }, orderBy: { updatedAt: 'desc' }, take: 200 } } },
         webhook: { select: { id: true, name: true } },
       },
     }),
@@ -103,7 +104,22 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
                 const homeLabel = f.task ? (f.task.project?.name ? `Task — ${f.task.title} · ${f.task.project.name}` : `Task — ${f.task.title}`)
                   : f.project ? `Project — ${f.project.name}`
                   : 'Library (unassigned)';
-                const companies: Link[] = f.leadLinks.map((link) => ({ id: link.lead?.id ?? link.leadId ?? '', label: link.lead?.name ?? 'lead', kind: 'LEAD' as const, linkId: link.id })).filter((c) => c.id);
+                const companies: Link[] = [];
+                const seenLeadIds = new Set<string>();
+                for (const link of f.leadLinks) {
+                  const id = link.lead?.id ?? link.leadId ?? '';
+                  if (id && !seenLeadIds.has(id)) {
+                    seenLeadIds.add(id);
+                    companies.push({ id, label: link.lead?.name ?? 'lead', kind: 'LEAD', linkId: link.id });
+                  }
+                }
+                const datasetCompanies: string[] = [];
+                for (const lead of f.leadDataset?.leads ?? []) {
+                  if (!seenLeadIds.has(lead.id)) {
+                    seenLeadIds.add(lead.id);
+                    datasetCompanies.push(lead.name);
+                  }
+                }
                 const current = {
                   home: { kind: f.task ? ('task' as const) : f.project ? ('project' as const) : ('library' as const), id: f.task?.id ?? f.project?.id },
                   links: companies,
@@ -117,9 +133,10 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
                       {f.task ? <span className="pill"><a href={`/workspace/files?tab=task&id=${f.task.id}`} style={{ color: 'var(--acid)' }}>{homeLabel}</a></span>
                       : f.project ? <span className="pill"><a href={`/workspace/files?tab=project&id=${f.project.id}`} style={{ color: 'var(--acid)' }}>{homeLabel}</a></span>
                       : <span className="pill">{homeLabel}</span>}
-                      {companies.length ? (
+                      {companies.length || datasetCompanies.length ? (
                         <div className="itemsub" style={{ marginTop: 4 }}>
-                          Companies: {companies.slice(0, 3).map((c) => c.label).join(', ')}{companies.length > 3 ? ` +${companies.length - 3}` : ''}
+                          Companies: {[...companies.map((c) => c.label), ...datasetCompanies].slice(0, 3).join(', ')}
+                          {companies.length + datasetCompanies.length > 3 ? ` +${companies.length + datasetCompanies.length - 3}` : ''}
                         </div>
                       ) : null}
                     </td>
