@@ -17,6 +17,22 @@ const SERVICES = ['AI Automation', 'Web Development', 'Cybersecurity', 'Website'
 const SOURCES = ['Website', 'Google Maps', 'Referral', 'Cold Outreach', 'LinkedIn'];
 const STATUS = ['NEW', 'CONTACTED', 'QUALIFIED', 'PROPOSAL_SENT', 'WON', 'LOST'] as const;
 
+// Hard-coded once — never changes based on file or data
+const LEAD_TABLE_COLUMNS = [
+  { key: 'leadCode', label: 'Lead ID' },
+  { key: 'name', label: 'Company / Contact' },
+  { label: 'Email / Phone' },
+  { label: 'Category / Industry' },
+  { label: 'City / Country' },
+  { label: 'Website' },
+  { key: 'source', label: 'Source' },
+  { key: 'status', label: 'Status' },
+  { key: 'value', label: 'Est. value' },
+  { key: 'followup', label: 'Follow-up' },
+  { key: 'owner', label: 'Owner' },
+  { label: 'Actions' },
+] as const;
+
 function leadFields(owners: { id: string; name: string }[], edit?: { id: string; name: string; contactPerson: string | null; email: string | null; phone: string | null; website: string | null; industry: string | null; city: string | null; country: string | null; notes: string | null; service: string; source: string; status: string; estValue: number; nextFollowUp: Date | null; ownerId: string | null }): FieldSpec[] {
   return [
     { label: 'Company / contact', name: 'name', required: true, value: edit?.name },
@@ -109,6 +125,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       followup: l.nextFollowUp ? l.nextFollowUp.toISOString() : null,
       owner: l.owner?.name ?? '',
     },
+    // Exactly 12 cells to match the 12 fixed columns — never omit any
     cells: [
       <>
         <a href={`/workspace/leads?lead=${encodeURIComponent(l.leadCode)}`} style={{ color: 'var(--purple)' }}>
@@ -132,7 +149,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
         {l.phone ? <div className="itemsub">{l.phone}</div> : null}
         {!l.email && !l.phone ? '—' : null}
       </>,
-      l.industry || l.service,
+      l.industry || l.service || '—',
       [l.city, l.country].filter(Boolean).join(', ') || '—',
       l.website ? (
         <a href={l.website} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--purple)' }}>
@@ -141,7 +158,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       ) : (
         '—'
       ),
-      l.source,
+      l.source || '—',
       <InlineSelect
         key="st"
         value={l.status}
@@ -204,22 +221,6 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       </span>,
     ],
   }));
-
-  // Always the same fixed columns — never change based on uploaded file
-  const FIXED_COLUMNS = [
-    { key: 'leadCode', label: 'Lead ID' },
-    { key: 'name', label: 'Company / Contact' },
-    { label: 'Email / Phone' },
-    { label: 'Category / Industry' },
-    { label: 'City / Country' },
-    { label: 'Website' },
-    { key: 'source', label: 'Source' },
-    { key: 'status', label: 'Status' },
-    { key: 'value', label: 'Est. value' },
-    { key: 'followup', label: 'Follow-up' },
-    { key: 'owner', label: 'Owner' },
-    { label: 'Actions' },
-  ];
 
   let emptyMessage = 'No leads yet — add your first one or upload a CSV.';
   if (query) {
@@ -300,8 +301,10 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
         }))}
       />
 
+      {/* key forces full remount when switching files so columns never stick from previous render */}
       <DataTable
-        columns={FIXED_COLUMNS}
+        key={activeDatasetId ?? 'no-dataset'}
+        columns={[...LEAD_TABLE_COLUMNS]}
         rows={rows}
         bulk={[{ label: 'Delete selected', action: bulkDeleteLeads, confirm: 'Delete all selected leads?', danger: true }]}
         empty={emptyMessage}
