@@ -5,6 +5,7 @@ import { labelize, formatDate } from '@/lib/format';
 import { useTemplate, importTemplate } from '@/lib/actions';
 import ModalForm from '@/components/ModalForm';
 import type { FieldSpec } from '@/lib/validators';
+import LinkN8nWorkflow from './LinkN8nWorkflow';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,6 +69,16 @@ export default async function TemplatesPage({ searchParams }: { searchParams: Pr
                   {t.framework ? <> · framework: {t.framework}</> : null}
                   {t.envVarNames.length > 0 ? <> · env: {t.envVarNames.join(', ')}</> : null}
                 </div>
+              ) : null}
+              {t.kind === 'AUTOMATION' ? (
+                t.n8nWorkflowId ? (
+                  <div className="itemsub" style={{ marginBottom: 8 }}>
+                    n8n workflow: <a href={`/workspace/n8n?workflow=${encodeURIComponent(t.n8nWorkflowId)}`} style={{ color: 'var(--purple)' }}>{t.n8nWorkflowName ?? t.n8nWorkflowId} ↗</a>
+                    {' · '}<span>open it to preview JSON or export it to Files</span>
+                  </div>
+                ) : role === 'ADMIN' ? (
+                  <div style={{ marginBottom: 10 }}><LinkN8nWorkflow templateId={t.id} /></div>
+                ) : null
               ) : null}
               <ModalForm
                 title={`Use template — ${t.name}`}

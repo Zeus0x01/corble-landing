@@ -887,6 +887,7 @@ export async function useTemplate(raw: unknown): Promise<ActionResult> {
         })),
       });
     }
+
     await logActivity(u.id, 'Project created from template', `${project.name} (${template.name})`);
     revalidatePath('/workspace/projects');
     revalidatePath('/workspace/tasks');
@@ -2269,6 +2270,7 @@ export async function importTemplate(raw: unknown): Promise<ActionResult> {
     } catch {
       return { ok: false, error: 'Invalid URL.' };
     }
+
     const name = path.replace(/[-_.]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
     const existing = await db.template.findFirst({ where: { OR: [{ source: origin }, { name, kind: input.kind }] } });
     if (existing) {
@@ -2292,6 +2294,22 @@ export async function importTemplate(raw: unknown): Promise<ActionResult> {
     await logActivity(u.id, 'Template imported', `${t.name} (${input.kind})`);
     revalidatePath('/workspace/templates');
     return okRes(`Template imported: ${t.name} â€” review its steps, framework and env vars.`);
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function linkTemplateN8nWorkflow(raw: unknown): Promise<ActionResult> {
+  try {
+    const u = await requireAdmin();
+    const input = z.object({ templateId: z.string().min(1), workflowId: z.string().min(1).max(80), workflowName: z.string().min(1).max(160) }).parse(raw);
+    const template = await db.template.findUnique({ where: { id: input.templateId }, select: { id: true, kind: true, name: true } });
+    if (!template) return { ok: false, error: 'Template not found.' };
+    if (template.kind !== 'AUTOMATION') return { ok: false, error: 'Only automation templates can link n8n workflows.' };
+    await db.template.update({ where: { id: template.id }, data: { n8nWorkflowId: input.workflowId, n8nWorkflowName: input.workflowName } });
+    await logActivity(u.id, 'n8n workflow linked to template', `${template.name} -> ${input.workflowName}`);
+    revalidatePath('/workspace/templates');
+    return okRes(`Workflow linked to ${template.name}.`);
   } catch (e) {
     return fail(e);
   }

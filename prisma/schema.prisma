@@ -639,6 +639,8 @@ model Template {
   version      String?
   source       String?
   workflowJson String?
+  n8nWorkflowId String?
+  n8nWorkflowName String?
   repoUrl      String?
   framework    String?
   envVarNames  String[]     @default([])

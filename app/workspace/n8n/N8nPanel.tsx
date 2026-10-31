@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useToast } from '@/app/workspace/Shell';
 import { exportN8nWorkflow, importN8nWorkflow } from '@/lib/actions';
 
@@ -19,6 +19,7 @@ type Asset = { id: string; name: string; size: number; at: string };
 export default function N8nPanel({ admin, configured, missing, assets }: { admin: boolean; configured: boolean; missing: string; assets: Asset[] }) {
   const toast = useToast();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [workflows, setWorkflows] = useState<WorkflowSummary[] | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [q, setQ] = useState('');
@@ -27,6 +28,7 @@ export default function N8nPanel({ admin, configured, missing, assets }: { admin
   const [importAsset, setImportAsset] = useState<string>('');
   const [importName, setImportName] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
+  const requestedWorkflow = searchParams.get('workflow');
 
   useEffect(() => {
     if (!admin || !configured) return;
@@ -47,6 +49,22 @@ export default function N8nPanel({ admin, configured, missing, assets }: { admin
       cancelled = true;
     };
   }, [admin, configured, q, refreshKey]);
+
+  useEffect(() => {
+    if (!requestedWorkflow || !workflows) return;
+    const workflow = workflows.find((item) => item.id === requestedWorkflow);
+    if (!workflow) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/n8n/workflows/${encodeURIComponent(workflow.id)}`, { cache: 'no-store' });
+        const data = (await res.json()) as { ok: boolean; workflow?: { json: unknown }; error?: string };
+        if (data.ok && data.workflow) setViewing({ name: workflow.name, json: JSON.stringify(data.workflow.json, null, 2) });
+        else toast(data.error ?? 'Could not load workflow JSON.', 'err');
+      } catch {
+        toast('Could not load workflow JSON.', 'err');
+      }
+    })();
+  }, [requestedWorkflow, workflows, toast]);
 
   function refresh() {
     setWorkflows(null);
