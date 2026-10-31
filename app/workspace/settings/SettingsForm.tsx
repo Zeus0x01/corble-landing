@@ -30,7 +30,7 @@ export default function SettingsForm({
     setTheme(next);
     const res = await saveMyTheme(next);
     if (!res.ok) toast(res.error ?? 'Could not save theme.', 'err');
-    else toast(` switched to ${next === 'light' ? 'light' : 'dark'} mode.`);
+    else toast(`Switched to ${next === 'light' ? 'light' : 'dark'} mode.`);
   }
 
   async function onSubmit(e: React.FormEvent) {
