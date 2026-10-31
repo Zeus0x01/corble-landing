@@ -79,7 +79,16 @@ async function postImport(req: NextRequest) {
       create: { userId, activeDatasetId: dataset.id },
       update: { activeDatasetId: dataset.id },
     });
-    return Response.json({ ok: true, assetId: asset.id, datasetId: dataset.id });
+    return Response.json({
+      ok: true,
+      assetId: asset.id,
+      datasetId: dataset.id,
+      total: rows.length + invalid.length,
+      columns,
+      dupsInDb: mapped.filter((m) => dupNames.has(normalized(m.name)) || (m.email && dupEmails.has(normalized(m.email))) || (m.phone && dupPhones.has(normalized(m.phone)))).length,
+      valid: mapped.slice(0, 200),
+      invalid: invalid.slice(0, 50),
+    });
   }
 
   if (bodyJson.mode !== 'commit') {

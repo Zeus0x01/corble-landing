@@ -82,6 +82,10 @@ export default function LeadCsvImport() {
     try {
       const result = await postDraft(f.name, convertedCsv);
       setAssetId(result.assetId ?? '');
+      if (result.ok) {
+        setPreview(result);
+        toast(`Preview: ${result.total} rows · ${result.valid?.length ?? 0} to import · ${result.dupsInDb ?? 0} already in CRM · ${result.invalid?.length ?? 0} invalid.`, 'ok');
+      }
       router.refresh();
     } catch (error) {
       toast(error instanceof Error ? error.message : 'Could not save draft.', 'err');
