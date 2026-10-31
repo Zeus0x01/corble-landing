@@ -283,7 +283,14 @@ export const deployConfigSchema = z.object({
 
 export const templateImportSchema = z.object({
   kind: z.enum(['AUTOMATION', 'WEBSITE']),
-  url: z.string().url().max(400),
+  url: z.string().url().max(400).optional(),
+  workflowId: z.string().min(1).max(80).optional(),
+  workflowName: z.string().min(1).max(160).optional(),
+}).superRefine((value, ctx) => {
+  if (value.kind === 'WEBSITE' && !value.url) ctx.addIssue({ code: 'custom', path: ['url'], message: 'A GitHub repository URL is required.' });
+  if (value.kind === 'AUTOMATION' && !value.url && (!value.workflowId || !value.workflowName)) {
+    ctx.addIssue({ code: 'custom', path: ['workflowId'], message: 'An n8n workflow is required.' });
+  }
 });
 
 export const notificationReadSchema = z.object({

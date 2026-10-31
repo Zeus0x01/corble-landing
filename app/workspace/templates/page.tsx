@@ -2,10 +2,10 @@ import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { labelize, formatDate } from '@/lib/format';
-import { useTemplate, importTemplate } from '@/lib/actions';
+import { useTemplate } from '@/lib/actions';
 import ModalForm from '@/components/ModalForm';
-import type { FieldSpec } from '@/lib/validators';
 import LinkN8nWorkflow from './LinkN8nWorkflow';
+import ImportTemplate from './ImportTemplate';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,11 +27,6 @@ export default async function TemplatesPage({ searchParams }: { searchParams: Pr
     orderBy: { createdAt: 'asc' },
   });
 
-  const importFields: FieldSpec[] = [
-    { label: 'Category', name: 'kind', type: 'select', required: true, options: KINDS.map((k) => ({ value: k, label: labelize(k) })) },
-    { label: 'GitHub repository URL', name: 'url', type: 'url', required: true, full: true, placeholder: 'https://github.com/owner/repository' },
-  ];
-
   const automationCount = templates.filter((template) => template.kind === 'AUTOMATION').length;
   const websiteCount = templates.filter((template) => template.kind === 'WEBSITE').length;
 
@@ -51,15 +46,7 @@ export default async function TemplatesPage({ searchParams }: { searchParams: Pr
           {kind && <a className="btn" href="/workspace/templates">Clear filter</a>}
           <a className="btn" href="/workspace/templates?kind=AUTOMATION">Automations</a>
           <a className="btn" href="/workspace/templates?kind=WEBSITE">Websites</a>
-          {role === 'ADMIN' ? (
-            <ModalForm
-              title="Import template from GitHub"
-              description="Use a public repository URL. Corble validates the repository, normalizes its source URL, and detects useful metadata before saving."
-              trigger="⇪ Import"
-              action={importTemplate}
-              fields={importFields}
-            />
-          ) : null}
+          {role === 'ADMIN' ? <ImportTemplate /> : null}
         </div>
       </div>
 
@@ -80,9 +67,10 @@ export default async function TemplatesPage({ searchParams }: { searchParams: Pr
               <ol style={{ margin: '0 0 16px', paddingLeft: 18, color: 'var(--text)', fontSize: 13, display: 'grid', gap: 6 }}>
                 {t.steps.map((s) => <li key={s}>{s}</li>)}
               </ol>
-              {t.repoUrl ? (
+              {t.kind === 'WEBSITE' && t.repoUrl ? (
                 <div className="template-meta">
-                  <a href={t.repoUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--purple)' }}>View source on GitHub ↗</a>
+                  <span>GitHub source</span>
+                  <a href={t.repoUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--purple)' }}>{t.repoUrl} ↗</a>
                   {t.framework ? <span>Framework: {t.framework}</span> : null}
                   {t.envVarNames.length > 0 ? <span>Env: {t.envVarNames.join(', ')}</span> : null}
                 </div>

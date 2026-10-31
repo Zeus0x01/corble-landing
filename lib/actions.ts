@@ -2317,7 +2317,34 @@ export async function importTemplate(raw: unknown): Promise<ActionResult> {
     const u = await requireUser();
     const input = templateImportSchema.parse(raw);
     if (u.role !== 'ADMIN') return { ok: false, error: 'Only admins can import templates.' };
+    if (input.kind === 'AUTOMATION' && input.workflowId && input.workflowName) {
+      const existing = await db.template.findFirst({ where: { n8nWorkflowId: input.workflowId } });
+      if (existing) {
+        await db.template.update({
+          where: { id: existing.id },
+          data: { kind: 'AUTOMATION', n8nWorkflowName: input.workflowName, updatedAt: new Date() },
+        });
+        await logActivity(u.id, 'n8n workflow template refreshed', `${existing.name} -> ${input.workflowName}`);
+        revalidatePath('/workspace/templates');
+        return okRes(`Template updated: ${existing.name}.`);
+      }
+      const t = await db.template.create({
+        data: {
+          name: input.workflowName,
+          description: `AI automation template from n8n workflow "${input.workflowName}".`,
+          kind: 'AUTOMATION',
+          source: 'n8n',
+          n8nWorkflowId: input.workflowId,
+          n8nWorkflowName: input.workflowName,
+          steps: ['Review workflow inputs', 'Configure credentials', 'Test workflow', 'Review edge cases', 'Hand over automation'],
+        },
+      });
+      await logActivity(u.id, 'n8n workflow template imported', `${t.name} (AUTOMATION)`);
+      revalidatePath('/workspace/templates');
+      return okRes(`AI automation imported: ${t.name}.`);
+    }
     try {
+      if (!input.url) return { ok: false, error: 'A GitHub repository URL is required.' };
       const normalized = normalizeGithubTemplateUrl(input.url);
       const metadata = await importedGithubMetadata(normalized.owner, normalized.repo);
       const steps = input.kind === 'WEBSITE'
