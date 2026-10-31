@@ -11,7 +11,7 @@ import * as XLSX from 'xlsx';
 
 export const dynamic = 'force-dynamic';
 
-// POST { filename, csv, mode: 'preview' | 'commit' } — imports research-sourced contacts into Final Leads.
+// POST { filename, csv, mode: 'preview' | 'commit' | 'draft' } — imports research-sourced contacts into Final Leads.
 const SERVICE_DEFAULT = 'Website';
 
 async function postImport(req: NextRequest) {
@@ -66,55 +66,90 @@ async function postImport(req: NextRequest) {
   const dupEmails = new Set(existing.map((l) => l.email).filter(Boolean).map((v) => normalized(v as string)));
   const dupPhones = new Set(existing.map((l) => l.phone).filter(Boolean).map((v) => normalized(v as string)));
 
+  // ─── DRAFT MODE ────────────────────────────────────────────────────────────
+  // Create a new independent draft file + dataset.
+  // Do NOT switch the active view — keep the user's current data visible.
   if (bodyJson.mode === 'draft') {
     const filename = (bodyJson.filename || 'leads.csv').slice(0, 160);
     const { storageKey, storage } = await saveUpload(new File([csv], filename, { type: 'text/csv' }));
     const asset = await db.fileAsset.create({
-      data: { name: filename, size: Buffer.byteLength(csv, 'utf8'), mimeType: /\.(xlsx|xls)$/i.test(filename) ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv', storageKey, storage, uploadedById: userId },
+      data: {
+        name: filename,
+        size: Buffer.byteLength(csv, 'utf8'),
+        mimeType: /\.(xlsx|xls)$/i.test(filename)
+          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          : 'text/csv',
+        storageKey,
+        storage,
+        uploadedById: userId,
+      },
       select: { id: true },
     });
-    const dataset = await db.leadDataset.create({ data: { fileAssetId: asset.id, ownerId: userId }, select: { id: true } });
-    await db.leadWorkspaceState.upsert({
-      where: { userId },
-      create: { userId, activeDatasetId: dataset.id },
-      update: { activeDatasetId: dataset.id },
+    const dataset = await db.leadDataset.create({
+      data: { fileAssetId: asset.id, ownerId: userId },
+      select: { id: true },
     });
+
+    // Important: we deliberately do NOT update leadWorkspaceState here.
+    // The new draft appears in the horizontal bar, but the currently
+    // active file (with real data) stays active until the user clicks it.
+
     return Response.json({
       ok: true,
       assetId: asset.id,
       datasetId: dataset.id,
       total: rows.length + invalid.length,
       columns,
-      dupsInDb: mapped.filter((m) => dupNames.has(normalized(m.name)) || (m.email && dupEmails.has(normalized(m.email))) || (m.phone && dupPhones.has(normalized(m.phone)))).length,
+      dupsInDb: mapped.filter(
+        (m) =>
+          dupNames.has(normalized(m.name)) ||
+          (m.email && dupEmails.has(normalized(m.email))) ||
+          (m.phone && dupPhones.has(normalized(m.phone)))
+      ).length,
       valid: mapped.slice(0, 200),
       invalid: invalid.slice(0, 50),
     });
   }
 
+  // ─── PREVIEW MODE ──────────────────────────────────────────────────────────
   if (bodyJson.mode !== 'commit') {
     return Response.json({
       ok: true,
       total: rows.length + invalid.length,
       columns,
-      dupsInDb: mapped.filter((m) => dupNames.has(normalized(m.name)) || (m.email && dupEmails.has(normalized(m.email))) || (m.phone && dupPhones.has(normalized(m.phone)))).length,
+      dupsInDb: mapped.filter(
+        (m) =>
+          dupNames.has(normalized(m.name)) ||
+          (m.email && dupEmails.has(normalized(m.email))) ||
+          (m.phone && dupPhones.has(normalized(m.phone)))
+      ).length,
       valid: mapped.slice(0, 200),
       invalid: invalid.slice(0, 50),
     });
   }
 
+  // ─── COMMIT MODE ───────────────────────────────────────────────────────────
   let assetId = bodyJson.assetId;
   if (assetId) {
-    const existingDataset = await db.leadDataset.findUnique({ where: { fileAssetId: assetId }, select: { id: true, _count: { select: { leads: true } } } });
+    const existingDataset = await db.leadDataset.findUnique({
+      where: { fileAssetId: assetId },
+      select: { id: true, _count: { select: { leads: true } } },
+    });
     if (existingDataset) {
       if (existingDataset._count.leads === 0) {
+        // Pure draft → switch to it and import
         await db.leadWorkspaceState.upsert({
           where: { userId },
           create: { userId, activeDatasetId: existingDataset.id },
           update: { activeDatasetId: existingDataset.id },
         });
       } else {
+        // Already has leads — just ensure links + switch
         const datasetLeads = await db.lead.findMany({ where: { datasetId: existingDataset.id }, select: { id: true } });
-        const linked = await db.fileLeadLink.findMany({ where: { fileAssetId: assetId, kind: 'LEAD' }, select: { leadId: true } });
+        const linked = await db.fileLeadLink.findMany({
+          where: { fileAssetId: assetId, kind: 'LEAD' },
+          select: { leadId: true },
+        });
         const linkedIds = new Set(linked.map((link) => link.leadId));
         const missing = datasetLeads.filter((lead) => !linkedIds.has(lead.id));
         if (missing.length) {
@@ -127,7 +162,13 @@ async function postImport(req: NextRequest) {
           create: { userId, activeDatasetId: existingDataset.id },
           update: { activeDatasetId: existingDataset.id },
         });
-        return Response.json({ ok: true, created: 0, duplicates: mapped.length, invalid: invalid.length, datasetId: existingDataset.id });
+        return Response.json({
+          ok: true,
+          created: 0,
+          duplicates: mapped.length,
+          invalid: invalid.length,
+          datasetId: existingDataset.id,
+        });
       }
     }
   } else {
@@ -135,7 +176,16 @@ async function postImport(req: NextRequest) {
     const { storageKey, storage } = await saveUpload(new File([csv], filename, { type: 'text/csv' }));
     const excel = /\.(xlsx|xls)$/i.test(filename);
     const asset = await db.fileAsset.create({
-      data: { name: filename, size: Buffer.byteLength(csv, 'utf8'), mimeType: excel ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv', storageKey, storage, uploadedById: userId },
+      data: {
+        name: filename,
+        size: Buffer.byteLength(csv, 'utf8'),
+        mimeType: excel
+          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          : 'text/csv',
+        storageKey,
+        storage,
+        uploadedById: userId,
+      },
       select: { id: true },
     });
     assetId = asset.id;
@@ -150,7 +200,11 @@ async function postImport(req: NextRequest) {
     const nameKey = normalized(m.name);
     const emailKey = m.email ? normalized(m.email) : '';
     const phoneKey = m.phone ? normalized(m.phone) : '';
-    if (importedNames.has(nameKey) || (emailKey && importedEmails.has(emailKey)) || (phoneKey && importedPhones.has(phoneKey))) {
+    if (
+      importedNames.has(nameKey) ||
+      (emailKey && importedEmails.has(emailKey)) ||
+      (phoneKey && importedPhones.has(phoneKey))
+    ) {
       continue;
     }
     importedNames.add(nameKey);
@@ -174,30 +228,55 @@ async function postImport(req: NextRequest) {
     });
     toCreate.push(m.name);
   }
+
   const CHUNK = 500;
   const datasetId = await db.$transaction(async (tx) => {
-    const dataset = await tx.leadDataset.findUnique({ where: { fileAssetId: assetId! }, select: { id: true } })
-      ?? await tx.leadDataset.create({ data: { fileAssetId: assetId!, ownerId: userId }, select: { id: true } });
+    const dataset =
+      (await tx.leadDataset.findUnique({ where: { fileAssetId: assetId! }, select: { id: true } })) ??
+      (await tx.leadDataset.create({ data: { fileAssetId: assetId!, ownerId: userId }, select: { id: true } }));
+
     const codes = await allocateLeadCodes(tx, toCreateData.length);
-    toCreateData.forEach((row, index) => { row.leadCode = codes[index]; });
+    toCreateData.forEach((row, index) => {
+      row.leadCode = codes[index];
+    });
+
     for (let i = 0; i < toCreateData.length; i += CHUNK) {
-      await tx.lead.createMany({ data: toCreateData.slice(i, i + CHUNK).map((row) => ({ ...row, datasetId: dataset.id })) });
+      await tx.lead.createMany({
+        data: toCreateData.slice(i, i + CHUNK).map((row) => ({ ...row, datasetId: dataset.id })),
+      });
     }
+
     if (toCreateData.length) {
       const created = await tx.lead.findMany({ where: { datasetId: dataset.id }, select: { id: true } });
-      await tx.fileLeadLink.createMany({ data: created.map((lead) => ({ kind: 'LEAD', leadId: lead.id, fileAssetId: assetId! })) });
+      await tx.fileLeadLink.createMany({
+        data: created.map((lead) => ({ kind: 'LEAD', leadId: lead.id, fileAssetId: assetId! })),
+      });
     }
     return dataset.id;
   });
+
   await db.activity.create({
-    data: { message: 'Final leads CSV import', detail: `${toCreate.length} created, ${mapped.length - toCreate.length} duplicates, ${invalid.length} invalid`, userId },
+    data: {
+      message: 'Final leads CSV import',
+      detail: `${toCreate.length} created, ${mapped.length - toCreate.length} duplicates, ${invalid.length} invalid`,
+      userId,
+    },
   });
+
+  // After a successful import we DO switch to the newly imported dataset
   await db.leadWorkspaceState.upsert({
     where: { userId },
     create: { userId, activeDatasetId: datasetId },
     update: { activeDatasetId: datasetId },
   });
-  return Response.json({ ok: true, created: toCreate.length, duplicates: mapped.length - toCreate.length, invalid: invalid.length, datasetId });
+
+  return Response.json({
+    ok: true,
+    created: toCreate.length,
+    duplicates: mapped.length - toCreate.length,
+    invalid: invalid.length,
+    datasetId,
+  });
 }
 
 export async function POST(req: NextRequest) {
