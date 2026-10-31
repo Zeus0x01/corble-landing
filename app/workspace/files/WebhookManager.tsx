@@ -42,12 +42,15 @@ export default function WebhookManager() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [newUrl, setNewUrl] = useState('');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   async function load() {
     const res = await fetch('/api/webhooks', { cache: 'no-store' });
     const data = (await res.json()) as { ok?: boolean; error?: string; webhooks?: Webhook[] };
     if (!res.ok || !data.ok) throw new Error(data.error ?? 'Could not load webhooks.');
-    setWebhooks(data.webhooks ?? []);
+    const next = data.webhooks ?? [];
+    setWebhooks(next);
+    setSelectedId((current) => current && next.some((webhook) => webhook.id === current) ? current : next[0]?.id ?? null);
   }
 
   useEffect(() => {
@@ -68,11 +71,12 @@ export default function WebhookManager() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ name, description: description || null, enabled: true }),
       });
-      const data = (await res.json()) as { ok?: boolean; error?: string; url?: string };
+      const data = (await res.json()) as { ok?: boolean; error?: string; url?: string; webhook?: { id: string } };
       if (!res.ok || !data.ok) throw new Error(data.error ?? 'Could not save webhook.');
       if (data.url) setNewUrl(data.url);
       resetForm();
       await load();
+      if (data.webhook?.id) setSelectedId(data.webhook.id);
       toast(editing ? 'Webhook updated.' : 'Webhook created.', 'ok');
     } catch (error) {
       toast(error instanceof Error ? error.message : 'Could not save webhook.', 'err');
@@ -100,6 +104,7 @@ export default function WebhookManager() {
     } finally {
       setBusy(false);
     }
+
   }
 
   async function remove(id: string) {
@@ -121,6 +126,8 @@ export default function WebhookManager() {
     await navigator.clipboard.writeText(value);
     toast('Webhook URL copied.', 'ok');
   }
+
+  const selected = webhooks.find((webhook) => webhook.id === selectedId) ?? null;
 
   return (
     <>
@@ -153,27 +160,43 @@ export default function WebhookManager() {
                 {editing ? <button className="btn" type="button" onClick={resetForm}>Cancel</button> : null}
               </div>
             </div>
-            <div style={{ display: 'grid', gap: 12, maxHeight: '55vh', overflow: 'auto' }}>
-              {webhooks.length === 0 ? <div className="empty">No webhooks configured yet.</div> : webhooks.map((webhook) => (
-                <div className="panel" key={webhook.id}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(190px, .7fr) minmax(0, 1.8fr)', gap: 12, minHeight: 260 }}>
+              <div className="panel" style={{ display: 'grid', alignContent: 'start', gap: 6, maxHeight: '55vh', overflowY: 'auto' }}>
+                <strong style={{ marginBottom: 4 }}>Existing webhooks</strong>
+                {webhooks.length === 0 ? <div className="empty">No webhooks configured yet.</div> : webhooks.map((webhook) => (
+                  <button
+                    className="btn"
+                    key={webhook.id}
+                    type="button"
+                    onClick={() => setSelectedId(webhook.id)}
+                    aria-pressed={selectedId === webhook.id}
+                    style={{ justifyContent: 'space-between', textAlign: 'left', borderColor: selectedId === webhook.id ? 'var(--acid)' : undefined }}
+                  >
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{webhook.name}</span>
+                    <span className="itemsub">{webhook.enabled ? 'On' : 'Off'}</span>
+                  </button>
+                ))}
+              </div>
+              {selected ? (
+                <div className="panel" key={selected.id}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                    <div><h3 style={{ margin: 0 }}>{webhook.name}</h3><div className="sub">{webhook.description || 'No description'}</div></div>
-                    <span className="pill">{webhook.enabled ? 'Enabled' : 'Disabled'}</span>
+                    <div><h3 style={{ margin: 0 }}>{selected.name}</h3><div className="sub">{selected.description || 'No description'}</div></div>
+                    <span className="pill">{selected.enabled ? 'Enabled' : 'Disabled'}</span>
                   </div>
-                  <div className="sub" style={{ marginTop: 8 }}>Files: {webhook.fileCount} · Last triggered: {date(webhook.lastTriggeredAt)}</div>
+                  <div className="sub" style={{ marginTop: 8 }}>Files: {selected.fileCount} · Last triggered: {date(selected.lastTriggeredAt)}</div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
-                    <button className="btn sq" type="button" onClick={() => update(webhook.id, { enabled: !webhook.enabled })} disabled={busy}>{webhook.enabled ? 'Disable' : 'Enable'}</button>
-                    <button className="btn sq" type="button" onClick={() => { setEditing(webhook.id); setName(webhook.name); setDescription(webhook.description ?? ''); }} disabled={busy}>Edit</button>
-                    <button className="btn sq" type="button" onClick={() => update(webhook.id, { regenerateSecret: true })} disabled={busy}>Regenerate URL</button>
-                    <button className="btn sq" type="button" onClick={() => remove(webhook.id)} disabled={busy}>Delete</button>
+                    <button className="btn sq" type="button" onClick={() => update(selected.id, { enabled: !selected.enabled })} disabled={busy}>{selected.enabled ? 'Disable' : 'Enable'}</button>
+                    <button className="btn sq" type="button" onClick={() => { setEditing(selected.id); setName(selected.name); setDescription(selected.description ?? ''); }} disabled={busy}>Edit</button>
+                    <button className="btn sq" type="button" onClick={() => update(selected.id, { regenerateSecret: true })} disabled={busy}>Regenerate URL</button>
+                    <button className="btn sq" type="button" onClick={() => remove(selected.id)} disabled={busy}>Delete</button>
                   </div>
                   <div style={{ marginTop: 12, overflowX: 'auto' }}>
                     <table className="table"><thead><tr><th>Received</th><th>File</th><th>Size</th><th>Status</th><th>Error</th></tr></thead>
-                      <tbody>{webhook.deliveries.length === 0 ? <tr><td colSpan={5} className="empty">No deliveries.</td></tr> : webhook.deliveries.map((delivery) => <tr key={delivery.id}><td>{date(delivery.receivedAt)}</td><td>{delivery.fileAssetId ? <a href={`/api/files/${delivery.fileAssetId}`} style={{ color: 'var(--purple)' }}>{delivery.filename}</a> : delivery.filename ?? '—'}</td><td>{bytes(delivery.size)}</td><td><span className="pill">{delivery.status}</span></td><td>{delivery.error ?? '—'}</td></tr>)}</tbody>
+                      <tbody>{selected.deliveries.length === 0 ? <tr><td colSpan={5} className="empty">No deliveries.</td></tr> : selected.deliveries.map((delivery) => <tr key={delivery.id}><td>{date(delivery.receivedAt)}</td><td>{delivery.fileAssetId ? <a href={`/api/files/${delivery.fileAssetId}`} style={{ color: 'var(--purple)' }}>{delivery.filename}</a> : delivery.filename ?? '—'}</td><td>{bytes(delivery.size)}</td><td><span className="pill">{delivery.status}</span></td><td>{delivery.error ?? '—'}</td></tr>)}</tbody>
                     </table>
                   </div>
                 </div>
-              ))}
+              ) : <div className="panel empty">Select an existing webhook to view its controls and activity.</div>}
             </div>
           </div>
         </div>
