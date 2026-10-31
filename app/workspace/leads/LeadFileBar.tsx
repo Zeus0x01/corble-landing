@@ -54,22 +54,123 @@ export default function LeadFileBar({ datasets }: { datasets: Dataset[] }) {
   }
 
   if (!datasets.length) return null;
+
   return (
     <section className="panel" aria-label="Lead files" style={{ marginBottom: 14, padding: 12 }}>
-      <div className="panelhead" style={{ marginBottom: 8 }}>
-        <div><strong>Lead files</strong><div className="sub">Each file has its own independent lead list.</div></div>
+      <div className="panelhead" style={{ marginBottom: 10 }}>
+        <div>
+          <strong>Lead files</strong>
+          <div className="sub">Each file is an independent list. Switch freely — columns stay the same.</div>
+        </div>
+        <div className="sub" style={{ whiteSpace: 'nowrap' }}>
+          {datasets.length} file{datasets.length === 1 ? '' : 's'}
+        </div>
       </div>
-      <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 2 }}>
-        {datasets.map((file) => (
-          <div key={file.id} style={{ minWidth: 220, border: `1px solid ${file.active ? 'var(--acid)' : 'var(--line)'}`, borderRadius: 10, padding: 10, background: file.active ? 'rgba(190,255,0,.08)' : 'var(--panel2)' }}>
-            <button type="button" onClick={() => select(file.id)} disabled={Boolean(busy)} style={{ all: 'unset', cursor: 'pointer', display: 'block', width: '100%' }}>
-              <strong style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.fileName}</strong>
-              <span className="itemsub">{file.mimeType} · {file.leadCount} leads</span>
-              <span className="itemsub" style={{ display: 'block' }}>{formatDate(file.modifiedAt)} · {file.active ? 'Active' : 'Draft'}</span>
-            </button>
-            {!file.active ? <button className="btn sq" type="button" onClick={() => remove(file.id)} disabled={Boolean(busy)} title="Remove draft" style={{ marginTop: 8 }}>✕</button> : null}
-          </div>
-        ))}
+
+      <div
+        style={{
+          display: 'flex',
+          gap: 10,
+          overflowX: 'auto',
+          paddingBottom: 4,
+          scrollbarWidth: 'thin',
+        }}
+      >
+        {datasets.map((file) => {
+          const isPureDraft = file.leadCount === 0;
+          const statusLabel = file.active
+            ? isPureDraft
+              ? 'Active · Draft'
+              : 'Active'
+            : isPureDraft
+              ? 'Draft'
+              : 'Imported';
+
+          return (
+            <div
+              key={file.id}
+              style={{
+                minWidth: 230,
+                maxWidth: 280,
+                flex: '0 0 auto',
+                border: `1px solid ${file.active ? 'var(--acid)' : 'var(--line)'}`,
+                borderRadius: 10,
+                padding: '10px 12px',
+                background: file.active ? 'rgba(190,255,0,.08)' : 'var(--panel2)',
+                position: 'relative',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => select(file.id)}
+                disabled={Boolean(busy)}
+                style={{
+                  all: 'unset',
+                  cursor: busy ? 'wait' : 'pointer',
+                  display: 'block',
+                  width: '100%',
+                }}
+                title={file.active ? 'Currently viewing this file' : 'Switch to this file'}
+              >
+                <strong
+                  style={{
+                    display: 'block',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    marginBottom: 4,
+                  }}
+                >
+                  {file.fileName}
+                </strong>
+
+                <span className="itemsub" style={{ display: 'block' }}>
+                  {file.mimeType.includes('csv') || file.fileName.toLowerCase().endsWith('.csv')
+                    ? 'text/csv'
+                    : file.mimeType}{' '}
+                  · {file.leadCount} lead{file.leadCount === 1 ? '' : 's'}
+                </span>
+
+                <span className="itemsub" style={{ display: 'block', marginTop: 2 }}>
+                  {formatDate(file.modifiedAt)} ·{' '}
+                  <span
+                    style={{
+                      color: file.active
+                        ? 'var(--acid)'
+                        : isPureDraft
+                          ? 'var(--muted)'
+                          : 'inherit',
+                      fontWeight: file.active ? 600 : 400,
+                    }}
+                  >
+                    {statusLabel}
+                  </span>
+                </span>
+              </button>
+
+              {!file.active && (
+                <button
+                  className="btn sq"
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    remove(file.id);
+                  }}
+                  disabled={Boolean(busy)}
+                  title="Remove this draft (imported leads stay)"
+                  style={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 8,
+                    opacity: 0.7,
+                  }}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
     </section>
   );
