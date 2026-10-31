@@ -6,6 +6,7 @@ import { deleteFile } from '@/lib/actions';
 import FileUploader from '@/components/FileUploader';
 import ConfirmAction from '@/components/ConfirmAction';
 import MoveAsset, { type Company, type Link } from '@/components/MoveAsset';
+import FileLeadImport from './FileLeadImport';
 
 export const dynamic = 'force-dynamic';
 
@@ -133,6 +134,7 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
                     <td>{formatDate(f.createdAt)}</td>
                     <td style={{ display: 'flex', gap: 6 }}>
                       <a className="btn sq" href={`/api/files/${f.id}`} aria-label={`Download ${f.name}`}>↓</a>
+                      {isAdmin && f.mimeType === 'text/csv' ? <FileLeadImport assetId={f.id} fileName={f.name} /> : null}
                       {isAdmin || f.uploadedById === userId ? (
                         <MoveAsset
                           assetId={f.id}

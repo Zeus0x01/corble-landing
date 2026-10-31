@@ -5,6 +5,7 @@ import { dbUser } from '@/lib/guard';
 import { parseCsv } from '@/lib/ingest';
 import { normalizeEmail, normalizePhone, normalizeWebsite } from '@/lib/ingest';
 import { allocateLeadCodes } from '@/lib/lead-id';
+import { readStoredText } from '@/lib/storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,12 +17,19 @@ async function postImport(req: NextRequest) {
   if (!me) return Response.json({ ok: false, error: 'Sign in first.' }, { status: 401 });
   const userId = me.id;
 
-  const bodyJson = (await req.json().catch(() => null)) as { filename?: string; csv?: string; mode?: string } | null;
-  if (!bodyJson || typeof bodyJson.csv !== 'string' || bodyJson.csv.length > 2_000_000) {
+  const bodyJson = (await req.json().catch(() => null)) as { assetId?: string; filename?: string; csv?: string; mode?: string } | null;
+  let csv = bodyJson?.csv;
+  if (!csv && bodyJson?.assetId) {
+    const asset = await db.fileAsset.findUnique({ where: { id: bodyJson.assetId }, select: { name: true, mimeType: true, storageKey: true, storage: true } });
+    if (!asset) return Response.json({ ok: false, error: 'File not found.' }, { status: 404 });
+    if (asset.mimeType !== 'text/csv' && !asset.name.toLowerCase().endsWith('.csv')) return Response.json({ ok: false, error: 'Only CSV files can be imported as leads.' }, { status: 415 });
+    csv = await readStoredText(asset.storageKey, asset.storage) ?? undefined;
+  }
+  if (!bodyJson || typeof csv !== 'string' || csv.length > 2_000_000) {
     return Response.json({ ok: false, error: 'CSV too large or missing.' }, { status: 400 });
   }
 
-  const { rows, invalid, columns } = parseCsv(bodyJson.csv);
+  const { rows, invalid, columns } = parseCsv(csv);
   const mapped = rows.map((row) => {
     const contact = row.contactPerson;
     const valueDigits = (row.value ?? '').replace(/[^\d]/g, '');
