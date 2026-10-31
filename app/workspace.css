@@ -252,6 +252,19 @@ input:focus, select:focus, textarea:focus { border-color: var(--purple); box-sha
 .cal-day.dimday { opacity: 0.35; }
 .cal-day.today { border-color: var(--purple); box-shadow: 0 0 0 1px var(--purple) inset; }
 .cal-day .dnum { font-weight: 800; margin-bottom: 5px; }
+.calendar-actions { display: flex; gap: 8px; }
+.calendar-summary { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; color: var(--muted); font-size: 12px; }
+.calendar-summary strong { color: var(--text); font-size: 15px; margin-right: 3px; }
+.calendar-key { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+.calendar-dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; }
+.calendar-dot.task { background: #a895ff; }
+.calendar-dot.lead { background: #36d399; margin-left: 8px; }
+.notification-unread { background: rgba(200, 255, 0, 0.045); }
+.notification-unread td:first-child { box-shadow: inset 3px 0 var(--purple); }
+.notification-read { opacity: 0.58; }
+.section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 24px 0 10px; }
+.section-heading h3 { margin: 0; font-size: 14px; letter-spacing: .02em; }
+.section-link { color: var(--purple); font-size: 12px; }
 .cal-item { display: block; padding: 3px 6px; border-radius: 6px; margin-bottom: 3px; color: var(--text); font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: rgba(200, 255, 0, 0.16); }
 .cal-item.lead { background: rgba(54, 211, 153, 0.14); }
 .cal-item:hover { outline: 1px solid var(--purple); }
@@ -317,6 +330,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--purple); box-sha
   .grid .wide, .lower .last { grid-column: auto; }
   .formgrid { grid-template-columns: 1fr; }
   .viewhead { align-items: flex-start; flex-wrap: wrap; }
+  .calendar-actions { width: 100%; }
+  .calendar-actions .btn { flex: 1; }
+  .calendar-key { width: 100%; margin-left: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   [data-ws] *, .bar, .fill { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
@@ -432,7 +448,12 @@ a.kpi { cursor: pointer; }
 [data-ws] .navgrouptoggle { border-radius: 8px; }
 [data-ws] .navgrouptoggle:focus-visible { outline: 2px solid #d9f36b; outline-offset: 1px; }
 [data-ws] .wsbrand { padding-bottom: 18px; }
-[data-ws] .status { margin-bottom: 4px; }
+[data-ws] .status {
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  text-align: center;
+}
 
 /* --- tables: glass sticky header + hover accent --- */
 .table th { background: rgba(16, 20, 33, 0.85); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); font-size: 10px; }

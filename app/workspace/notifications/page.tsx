@@ -45,7 +45,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
               <tr><td colSpan={6} className="empty">No notifications{unreadOnly ? ' unread' : ''}.</td></tr>
             ) : (
               items.map((n) => (
-                <tr key={n.id} style={n.readAt ? { opacity: 0.55 } : undefined}>
+                <tr key={n.id} className={n.readAt ? 'notification-read' : 'notification-unread'}>
                   <td><span className="pill">{labelType(n.type)}</span></td>
                   <td><strong>{n.title}</strong></td>
                   <td><div className="itemsub">{n.body ?? '—'}</div></td>

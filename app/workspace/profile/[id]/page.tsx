@@ -180,6 +180,10 @@ export default async function ProfilePage({ params }: { params: Promise<{ id: st
           <div className="klabel">Files uploaded</div>
           <div className="num">{fileCount}</div>
         </div>
+        <div className="kpi">
+          <div className="klabel">Activity events</div>
+          <div className="num">{activityCount}</div>
+        </div>
       </div>
 
       <div className="profilegrid">
@@ -209,7 +213,10 @@ export default async function ProfilePage({ params }: { params: Promise<{ id: st
             </table>
           </div>
 
-          <h3 style={{ margin: '24px 0 10px', fontSize: 14, letterSpacing: '.02em' }}>Recent files</h3>
+          <div className="section-heading">
+            <h3>Recent files</h3>
+            <Link href="/workspace/files" className="section-link">View files →</Link>
+          </div>
           <div className="tablewrap">
             <table className="table">
               <tbody>

@@ -47,6 +47,9 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     ...Array.from({ length: firstDow }, () => ({ day: null })),
     ...Array.from({ length: daysInMonth }, (_, i) => ({ day: i + 1 })),
   ];
+  const taskCount = tasks.length;
+  const followUpCount = leads.length;
+  const todayHref = `/workspace/calendar?m=${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
   return (
     <>
@@ -55,13 +58,19 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
           <h2>{monthNames[month]} {year}</h2>
           <div className="sub">Task due dates (violet) and lead follow-ups (green) from the database.</div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className="calendar-actions">
+          <a className="btn sq" href={todayHref}>Today</a>
           <a className="btn sq" href={`/workspace/calendar?m=${prevYm}`}>← Prev</a>
           <a className="btn sq" href={`/workspace/calendar?m=${nextYm}`}>Next →</a>
         </div>
       </div>
 
       <div className="card">
+        <div className="calendar-summary">
+          <span><strong>{taskCount}</strong> task due{taskCount === 1 ? '' : 's'}</span>
+          <span><strong>{followUpCount}</strong> lead follow-up{followUpCount === 1 ? '' : 's'}</span>
+          <span className="calendar-key"><i className="calendar-dot task" />Tasks <i className="calendar-dot lead" />Follow-ups</span>
+        </div>
         <div className="cal" role="grid" aria-label="Month calendar">
           {DAYS.map((d) => <div className="cal-head" key={d}>{d}</div>)}
           {boxes.map((b, i) => (
