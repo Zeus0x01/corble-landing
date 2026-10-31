@@ -14,6 +14,7 @@ export default function ModalForm({
   trigger,
   triggerClass = 'btn primary',
   hidden = {},
+  description,
 }: {
   title: string;
   fields: FieldSpec[];
@@ -21,6 +22,7 @@ export default function ModalForm({
   trigger: string;
   triggerClass?: string;
   hidden?: Record<string, string>;
+  description?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -67,6 +69,7 @@ export default function ModalForm({
               <h2>{title}</h2>
               <button type="button" className="btn sq" onClick={() => setOpen(false)} aria-label="Close dialog">✕</button>
             </div>
+            {description ? <p className="modalhint">{description}</p> : null}
             <div className="formgrid">
               {fields.map((f) => (
                 <label key={f.name} className={`field${f.full ? ' full' : ''}`}>

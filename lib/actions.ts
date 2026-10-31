@@ -2255,45 +2255,108 @@ export async function deployProject(raw: unknown): Promise<ActionResult> {
 
 /* ================= PHASE 8 â€” TEMPLATE CATEGORIES & IMPORT ================= */
 
+function normalizeGithubTemplateUrl(raw: string): { url: string; owner: string; repo: string } {
+  const parsed = new URL(raw.trim());
+  if (parsed.protocol !== 'https:' || !['github.com', 'www.github.com'].includes(parsed.hostname.toLowerCase())) {
+    throw new Error('Only public GitHub repository URLs are supported for template import.');
+  }
+  if (parsed.search || parsed.hash) throw new Error('Use the repository URL without a branch, file path, query, or hash.');
+  const parts = parsed.pathname.split('/').filter(Boolean);
+  if (parts.length !== 2) throw new Error('Enter a repository URL in the format https://github.com/owner/repository.');
+  const owner = parts[0];
+  const repo = parts[1].replace(/\.git$/i, '');
+  if (!/^[A-Za-z0-9_.-]+$/.test(owner) || !/^[A-Za-z0-9_.-]+$/.test(repo)) {
+    throw new Error('The GitHub owner or repository name is invalid.');
+  }
+  return { url: `https://github.com/${owner}/${repo}`, owner, repo };
+}
+
+async function importedGithubMetadata(owner: string, repo: string) {
+  const response = await fetch(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`, {
+    headers: { accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' },
+    cache: 'no-store',
+  });
+  if (!response.ok) {
+    if (response.status === 404) throw new Error('GitHub repository not found or it is not public.');
+    throw new Error(`GitHub could not validate this repository (HTTP ${response.status}).`);
+  }
+  const data = (await response.json()) as {
+    full_name?: string;
+    name?: string;
+    description?: string | null;
+    html_url?: string;
+    default_branch?: string;
+  };
+  if (!data.name || !data.full_name || !data.html_url) throw new Error('GitHub returned incomplete repository metadata.');
+
+  let framework: string | null = null;
+  try {
+    const contentsResponse = await fetch(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents`, {
+      headers: { accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' },
+      cache: 'no-store',
+    });
+    if (contentsResponse.ok) {
+      const entries = (await contentsResponse.json()) as Array<{ name?: string }>;
+      const names = new Set(entries.map((entry) => entry.name?.toLowerCase()).filter(Boolean));
+      if (names.has('next.config.js') || names.has('next.config.mjs') || names.has('next.config.ts')) framework = 'Next.js';
+      else if (names.has('vite.config.js') || names.has('vite.config.ts')) framework = 'Vite';
+      else if (names.has('astro.config.mjs') || names.has('astro.config.ts')) framework = 'Astro';
+      else if (names.has('nuxt.config.ts') || names.has('nuxt.config.js')) framework = 'Nuxt';
+      else if (names.has('angular.json')) framework = 'Angular';
+      else if (names.has('package.json')) framework = 'Node.js';
+      else if (names.has('manage.py') || names.has('requirements.txt')) framework = 'Python';
+    }
+  } catch {
+    framework = null;
+  }
+  return { name: data.name, source: data.full_name, description: data.description?.trim() || `Imported from GitHub (${data.full_name}).`, repoUrl: data.html_url, framework };
+}
+
 export async function importTemplate(raw: unknown): Promise<ActionResult> {
   try {
     const u = await requireUser();
     const input = templateImportSchema.parse(raw);
     if (u.role !== 'ADMIN') return { ok: false, error: 'Only admins can import templates.' };
-    let origin = '';
-    let path = '';
     try {
-      const url = new URL(input.url);
-      if (!/(^|\.)github\.com$/i.test(url.hostname)) return { ok: false, error: 'Only public GitHub repo URLs are supported for template import.' };
-      origin = url.pathname.split('/').filter(Boolean).slice(0, 2).join('/');
-      path = url.pathname.split('/').filter(Boolean)[1] ?? 'repo';
-    } catch {
-      return { ok: false, error: 'Invalid URL.' };
-    }
-
-    const name = path.replace(/[-_.]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-    const existing = await db.template.findFirst({ where: { OR: [{ source: origin }, { name, kind: input.kind }] } });
-    if (existing) {
-      await db.template.update({
-        where: { id: existing.id },
-        data: { kind: input.kind, source: origin, repoUrl: input.url, updatedAt: new Date() },
+      const normalized = normalizeGithubTemplateUrl(input.url);
+      const metadata = await importedGithubMetadata(normalized.owner, normalized.repo);
+      const steps = input.kind === 'WEBSITE'
+        ? ['Review repository and scope', 'Confirm content and design', 'Configure environment', 'Build and validate', 'QA and launch']
+        : ['Review automation requirements', 'Configure credentials and inputs', 'Build workflow', 'Test edge cases', 'Monitor and hand over'];
+      const existing = await db.template.findFirst({ where: { source: metadata.source } });
+      if (existing) {
+        await db.template.update({
+          where: { id: existing.id },
+          data: {
+            kind: input.kind,
+            source: metadata.source,
+            repoUrl: metadata.repoUrl,
+            description: existing.description.startsWith('Imported from GitHub') ? metadata.description : existing.description,
+            framework: metadata.framework ?? existing.framework,
+            updatedAt: new Date(),
+          },
+        });
+        await logActivity(u.id, `Template refreshed (${input.kind.toLowerCase()})`, existing.name);
+        revalidatePath('/workspace/templates');
+        return okRes(`Template updated: ${existing.name}.`);
+      }
+      const t = await db.template.create({
+        data: {
+          name: metadata.name.replace(/[-_.]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+          description: metadata.description,
+          kind: input.kind,
+          source: metadata.source,
+          repoUrl: metadata.repoUrl,
+          framework: metadata.framework,
+          steps,
+        },
       });
-      await logActivity(u.id, `Template refreshed (${input.kind.toLowerCase()})`, existing.name);
+      await logActivity(u.id, 'Template imported', `${t.name} (${input.kind})`);
       revalidatePath('/workspace/templates');
-      return okRes(`Template updated: ${existing.name}.`);
+      return okRes(`Template imported: ${t.name}. Review its steps and link an n8n workflow if needed.`);
+    } catch (e) {
+      throw e instanceof Error ? e : new Error('GitHub import failed. Check that the URL is a public repository and try again.');
     }
-    const t = await db.template.create({
-      data: {
-        name,
-        description: `Imported from GitHub (${origin}). Fill in steps/env vars after review.`,
-        kind: input.kind,
-        source: origin,
-        repoUrl: input.url,
-      },
-    });
-    await logActivity(u.id, 'Template imported', `${t.name} (${input.kind})`);
-    revalidatePath('/workspace/templates');
-    return okRes(`Template imported: ${t.name} â€” review its steps, framework and env vars.`);
   } catch (e) {
     return fail(e);
   }

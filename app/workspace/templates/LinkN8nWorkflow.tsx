@@ -17,7 +17,7 @@ export default function LinkN8nWorkflow({ templateId }: { templateId: string }) 
   useEffect(() => {
     fetch('/api/n8n/workflows', { cache: 'no-store' })
       .then(async (res) => {
-        const data = (await res.json()) as { ok?: boolean; workflows?: Workflow[] };
+        const data = (await res.json().catch(() => ({}))) as { ok?: boolean; workflows?: Workflow[] };
         if (res.ok && data.ok) setWorkflows(data.workflows ?? []);
       })
       .catch(() => undefined);
@@ -34,12 +34,12 @@ export default function LinkN8nWorkflow({ templateId }: { templateId: string }) 
   }
 
   return (
-    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+    <span className="template-workflow-link">
       <select className="textinput" value={workflowId} onChange={(event) => setWorkflowId(event.target.value)} aria-label="Choose n8n workflow">
         <option value="">Choose n8n workflow</option>
         {workflows.map((workflow) => <option key={workflow.id} value={workflow.id}>{workflow.name}</option>)}
       </select>
-      <button className="btn sq" onClick={save} disabled={busy || !workflowId}>{busy ? '…' : 'Link workflow'}</button>
+      <button className="btn sq" onClick={save} disabled={busy || !workflowId}>{busy ? 'Linking…' : 'Link workflow'}</button>
     </span>
   );
 }

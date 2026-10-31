@@ -29,23 +29,37 @@ export default async function TemplatesPage({ searchParams }: { searchParams: Pr
 
   const importFields: FieldSpec[] = [
     { label: 'Category', name: 'kind', type: 'select', required: true, options: KINDS.map((k) => ({ value: k, label: labelize(k) })) },
-    { label: 'GitHub repo URL (public)', name: 'url', required: true, full: true, value: 'https://github.com/' },
+    { label: 'GitHub repository URL', name: 'url', type: 'url', required: true, full: true, placeholder: 'https://github.com/owner/repository' },
   ];
+
+  const automationCount = templates.filter((template) => template.kind === 'AUTOMATION').length;
+  const websiteCount = templates.filter((template) => template.kind === 'WEBSITE').length;
 
   return (
     <>
       <div className="viewhead">
         <div>
           <h2>Playbook</h2>
-          <div className="sub">
-            Two categories: Automations and Websites. “Use template” creates the project plus starter tasks. Showing {templates.length} templates.
+          <div className="sub">Reusable starting points for delivery. “Use template” creates a project plus starter tasks.</div>
+          <div className="template-stats" aria-label="Template counts">
+            <span><strong>{templates.length}</strong> total</span>
+            <span><strong>{automationCount}</strong> automations</span>
+            <span><strong>{websiteCount}</strong> websites</span>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div className="template-actions">
           {kind && <a className="btn" href="/workspace/templates">Clear filter</a>}
           <a className="btn" href="/workspace/templates?kind=AUTOMATION">Automations</a>
           <a className="btn" href="/workspace/templates?kind=WEBSITE">Websites</a>
-          {role === 'ADMIN' ? <ModalForm title="Import template from GitHub" trigger="⇪ Import" action={importTemplate} fields={importFields} /> : null}
+          {role === 'ADMIN' ? (
+            <ModalForm
+              title="Import template from GitHub"
+              description="Use a public repository URL. Corble validates the repository, normalizes its source URL, and detects useful metadata before saving."
+              trigger="⇪ Import"
+              action={importTemplate}
+              fields={importFields}
+            />
+          ) : null}
         </div>
       </div>
 
@@ -54,27 +68,30 @@ export default async function TemplatesPage({ searchParams }: { searchParams: Pr
           <div className="card wide"><div className="empty" style={{ textAlign: 'center', color: 'var(--muted)' }}>No templates{kind ? ` in ${labelize(kind)}` : ' match'}.</div></div>
         ) : (
           templates.map((t) => (
-            <section className="card" key={t.id}>
+            <section className="card template-card" key={t.id}>
               <div className="panelhead">
-                <h2>{t.name}</h2>
-                <span className="pill">{t.kind === 'WEBSITE' ? '🌐 website' : '⚙︎ automation'} · {t.steps.length} steps</span>
+                <div>
+                  <div className="template-eyebrow">{t.kind === 'WEBSITE' ? 'Website playbook' : 'Automation playbook'}</div>
+                  <h2>{t.name}</h2>
+                </div>
+                <span className={`pill ${t.kind.toLowerCase()}`}>{t.kind === 'WEBSITE' ? '🌐 website' : '⚙︎ automation'} · {t.steps.length} steps</span>
               </div>
               <p style={{ color: 'var(--muted)', margin: '0 0 12px', fontSize: 13 }}>{t.description}</p>
               <ol style={{ margin: '0 0 16px', paddingLeft: 18, color: 'var(--text)', fontSize: 13, display: 'grid', gap: 6 }}>
                 {t.steps.map((s) => <li key={s}>{s}</li>)}
               </ol>
               {t.repoUrl ? (
-                <div className="itemsub" style={{ marginBottom: 8 }}>
-                  <a href={t.repoUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--purple)' }}>source repo ↗</a>
-                  {t.framework ? <> · framework: {t.framework}</> : null}
-                  {t.envVarNames.length > 0 ? <> · env: {t.envVarNames.join(', ')}</> : null}
+                <div className="template-meta">
+                  <a href={t.repoUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--purple)' }}>View source on GitHub ↗</a>
+                  {t.framework ? <span>Framework: {t.framework}</span> : null}
+                  {t.envVarNames.length > 0 ? <span>Env: {t.envVarNames.join(', ')}</span> : null}
                 </div>
               ) : null}
               {t.kind === 'AUTOMATION' ? (
                 t.n8nWorkflowId ? (
-                  <div className="itemsub" style={{ marginBottom: 8 }}>
-                    n8n workflow: <a href={`/workspace/n8n?workflow=${encodeURIComponent(t.n8nWorkflowId)}`} style={{ color: 'var(--purple)' }}>{t.n8nWorkflowName ?? t.n8nWorkflowId} ↗</a>
-                    {' · '}<span>open it to preview JSON or export it to Files</span>
+                  <div className="template-meta">
+                    <span>n8n workflow</span>
+                    <a href={`/workspace/n8n?workflow=${encodeURIComponent(t.n8nWorkflowId)}`} style={{ color: 'var(--purple)' }}>{t.n8nWorkflowName ?? t.n8nWorkflowId} ↗</a>
                   </div>
                 ) : role === 'ADMIN' ? (
                   <div style={{ marginBottom: 10 }}><LinkN8nWorkflow templateId={t.id} /></div>

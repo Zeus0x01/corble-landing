@@ -126,7 +126,7 @@ export const templateUseSchema = z.object({
 export type FieldSpec = {
   label: string;
   name: string;
-  type?: 'text' | 'number' | 'date' | 'select' | 'email' | 'password';
+  type?: 'text' | 'number' | 'date' | 'select' | 'email' | 'url' | 'password';
   options?: { value: string; label: string }[];
   required?: boolean;
   full?: boolean;
