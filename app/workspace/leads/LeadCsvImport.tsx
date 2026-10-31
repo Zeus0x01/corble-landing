@@ -13,6 +13,8 @@ type PreviewRes = {
   valid?: { name: string; service: string; estValue: number; contactPerson: string | null }[];
   invalid?: { reason: string }[];
   error?: string;
+  assetId?: string;
+  datasetId?: string;
 };
 type CommitRes = { ok: boolean; created?: number; duplicates?: number; invalid?: number; error?: string };
 
@@ -25,11 +27,19 @@ export default function LeadCsvImport() {
   const [busy, setBusy] = useState(false);
   const [assetId, setAssetId] = useState('');
 
-  async function post(mode: 'draft' | 'preview' | 'commit', values?: { filename?: string; csv?: string }): Promise<PreviewRes & CommitRes & { assetId?: string }> {
+  async function post(
+    mode: 'draft' | 'preview' | 'commit',
+    values?: { filename?: string; csv?: string }
+  ): Promise<PreviewRes & CommitRes> {
     const res = await fetch('/api/import/final', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ mode, filename: values?.filename ?? filename, csv: values?.csv ?? csv, assetId: assetId || undefined }),
+      body: JSON.stringify({
+        mode,
+        filename: values?.filename ?? filename,
+        csv: values?.csv ?? csv,
+        assetId: assetId || undefined,
+      }),
     });
     const text = await res.text();
     let payload: Partial<PreviewRes & CommitRes> = {};
@@ -44,10 +54,6 @@ export default function LeadCsvImport() {
     return payload as PreviewRes & CommitRes;
   }
 
-  async function postDraft(nextFilename: string, nextCsv: string) {
-    return post('draft', { filename: nextFilename, csv: nextCsv });
-  }
-
   async function runImport(mode: 'preview' | 'commit') {
     setBusy(true);
     try {
@@ -60,6 +66,7 @@ export default function LeadCsvImport() {
     }
   }
 
+  /** Step 1 – Upload: always creates a brand-new independent draft */
   async function pick(files: FileList | null) {
     const f = files?.[0];
     if (!f) return;
@@ -67,7 +74,11 @@ export default function LeadCsvImport() {
       toast('File too large — CSV and Excel files must be smaller than 2MB.', 'err');
       return;
     }
+
     setFilename(f.name);
+    setPreview(null);
+    setAssetId(''); // force new draft
+
     let convertedCsv: string;
     if (/\.(xlsx|xls)$/i.test(f.name)) {
       const workbook = XLSX.read(await f.arrayBuffer(), { type: 'array' });
@@ -77,21 +88,35 @@ export default function LeadCsvImport() {
       convertedCsv = await f.text();
     }
     setCsv(convertedCsv);
-    setPreview(null);
+
     setBusy(true);
     try {
-      const result = await postDraft(f.name, convertedCsv);
+      // mode: 'draft' → creates new fileAsset + leadDataset, sets it active
+      const result = await post('draft', { filename: f.name, csv: convertedCsv });
       setAssetId(result.assetId ?? '');
+
       if (result.ok) {
         setPreview(result);
-        toast(`Preview: ${result.total} rows · ${result.valid?.length ?? 0} to import · ${result.dupsInDb ?? 0} already in CRM · ${result.invalid?.length ?? 0} invalid.`, 'ok');
+        toast(
+          `Draft created: ${result.total} rows · ${result.valid?.length ?? 0} ready · ${result.dupsInDb ?? 0} already in CRM · ${result.invalid?.length ?? 0} invalid.`,
+          'ok'
+        );
       }
+      // Refresh so the new draft appears immediately in the horizontal bar
       router.refresh();
     } catch (error) {
-      toast(error instanceof Error ? error.message : 'Could not save draft.', 'err');
+      toast(error instanceof Error ? error.message : 'Could not create draft.', 'err');
     } finally {
       setBusy(false);
     }
+  }
+
+  function cancelReview() {
+    // Only clears the local review UI. The draft stays in the horizontal bar.
+    setPreview(null);
+    setCsv('');
+    setFilename('');
+    setAssetId('');
   }
 
   return (
@@ -99,58 +124,59 @@ export default function LeadCsvImport() {
       {preview === null ? (
         <>
           <label className="btn" style={{ cursor: 'pointer' }}>
-            ⇪ Import CSV / Excel
+            ⇪ Upload CSV / Excel
             <input
               type="file"
               accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
               style={{ display: 'none' }}
               onChange={async (e) => {
                 await pick(e.target.files);
+                // reset input so the same file can be selected again later
+                e.target.value = '';
               }}
             />
           </label>
-          <button
-            className="btn"
-            disabled={busy || !csv}
-            onClick={async () => {
-              const res = await runImport('preview');
-              if (!res) return;
-              if (res.ok) {
-                setPreview(res);
-                toast(`Preview: ${res.total} rows · ${res.valid?.length ?? 0} to import · ${res.dupsInDb ?? 0} already in CRM · ${res.invalid?.length ?? 0} invalid.`, 'ok');
-              } else {
-                toast(res.error ?? 'Preview failed', 'err');
-              }
-            }}
-          >
-            {busy ? 'Parsing…' : 'Preview file'}
-          </button>
         </>
       ) : (
         <>
-          <span className="pill">
-            {filename}: {preview.total} rows · {preview.valid?.length ?? 0} to import · {preview.dupsInDb} already exist
+          <span className="pill" title="This is a draft — nothing is imported yet">
+            {filename}: {preview.total} rows · {preview.valid?.length ?? 0} ready · {preview.dupsInDb ?? 0} already exist
           </span>
-          {preview.columns?.length ? <span className="sub">Mapped columns: {preview.columns.join(', ')}</span> : null}
+
+          {preview.columns?.length ? (
+            <span className="sub">Detected: {preview.columns.join(', ')}</span>
+          ) : null}
+
           <button
-            className="btn"
+            className="btn primary"
             disabled={busy || (preview.valid?.length ?? 0) === 0}
             onClick={async () => {
               const res = await runImport('commit');
               if (!res) return;
               if (res.ok) {
-                toast(`Imported ${res.created ?? 0} leads · ${res.duplicates ?? 0} duplicates skipped · ${res.invalid ?? 0} invalid`, 'ok');
-                setPreview(null);
-                setCsv('');
+                toast(
+                  `Imported ${res.created ?? 0} leads · ${res.duplicates ?? 0} duplicates skipped · ${res.invalid ?? 0} invalid`,
+                  'ok'
+                );
+                cancelReview();
                 router.refresh();
               } else {
-                toast(res.error ?? 'Commit failed', 'err');
+                toast(res.error ?? 'Import failed', 'err');
               }
             }}
           >
-            Import {preview.valid?.length ?? 0} leads
+            {busy ? 'Importing…' : `Import ${preview.valid?.length ?? 0} leads`}
           </button>
-          <button className="btn sq" disabled={busy} onClick={() => { setPreview(null); setCsv(''); }} title="Cancel" aria-label="Cancel import">✕</button>
+
+          <button
+            className="btn sq"
+            disabled={busy}
+            onClick={cancelReview}
+            title="Close review (draft stays in the file bar)"
+            aria-label="Close review"
+          >
+            ✕
+          </button>
         </>
       )}
     </span>
