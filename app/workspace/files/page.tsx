@@ -22,13 +22,12 @@ const TABS = [
   { key: 'project', label: 'Projects' },
   { key: 'task', label: 'Tasks' },
   { key: 'lead', label: 'Leads' },
-  { key: 'incoming', label: 'Incoming' },
 ];
 
 export default async function FilesPage({ searchParams }: { searchParams: Promise<{ q?: string; tab?: string; id?: string }> }) {
   const sp = await searchParams;
   const query = (sp.q ?? '').trim();
-  const tab = ['all', 'library', 'project', 'task', 'lead', 'incoming'].includes(sp.tab ?? '') ? (sp.tab || 'all') : 'all';
+  const tab = ['all', 'library', 'project', 'task', 'lead'].includes(sp.tab ?? '') ? (sp.tab || 'all') : 'all';
   const focusId = /^[a-z0-9]{6,40}$/i.exec(sp.id ?? '') ? sp.id : null;
   const session = await auth();
   const userId = session!.user.id;
@@ -39,9 +38,8 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
   else if (tab === 'project') where = { projectId: focusId ?? { not: null } };
   else if (tab === 'task') where = { taskId: focusId ?? { not: null } };
   else if (tab === 'lead') where = { leadLinks: { some: { kind: 'LEAD', ...(focusId ? { leadId: focusId } : {}) } } };
-  else if (tab === 'incoming') where = { leadLinks: { some: { kind: 'INCOMING', ...(focusId ? { incomingLeadId: focusId } : {}) } } };
 
-  const [files, projects, tasks, leads, incoming] = await Promise.all([
+  const [files, projects, tasks, leads] = await Promise.all([
     db.fileAsset.findMany({
       where,
       orderBy: { createdAt: 'desc' },
@@ -49,24 +47,17 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
       include: {
         project: { select: { id: true, name: true } },
         task: { select: { id: true, title: true, project: { select: { name: true } } } },
-        leadLinks: {
-          include: {
-            lead: { select: { id: true, name: true } },
-            incomingLead: { select: { id: true, company: true } },
-          },
-        },
+        leadLinks: { where: { kind: 'LEAD' }, include: { lead: { select: { id: true, name: true } } } },
       },
     }),
     db.project.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' }, take: 200 }),
     db.task.findMany({ where: { deletedAt: null }, select: { id: true, title: true, project: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 200 }),
     db.lead.findMany({ select: { id: true, name: true }, orderBy: { updatedAt: 'desc' }, take: 200 }),
-    db.incomingLead.findMany({ select: { id: true, company: true, processingStatus: true }, orderBy: { receivedAt: 'desc' }, take: 200 }),
   ]);
 
   const projectOpts = projects.map((p) => ({ id: p.id, label: p.name }));
   const taskOpts = tasks.map((t) => ({ id: t.id, label: t.project?.name ? `${t.title} · ${t.project.name}` : t.title }));
   const leadOpts: Company[] = leads.map((l) => ({ id: l.id, label: l.name, kind: 'LEAD' as const }));
-  const incomingOpts: Company[] = incoming.map((i) => ({ id: i.id, label: i.company, kind: 'INCOMING' as const }));
 
   return (
     <>
@@ -107,11 +98,7 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
                 const homeLabel = f.task ? (f.task.project?.name ? `Task — ${f.task.title} · ${f.task.project.name}` : `Task — ${f.task.title}`)
                   : f.project ? `Project — ${f.project.name}`
                   : 'Library (unassigned)';
-                const companies: Link[] = f.leadLinks.map((link) =>
-                  link.kind === 'LEAD'
-                    ? { id: link.lead?.id ?? link.leadId ?? '', label: link.lead?.name ?? 'lead', kind: 'LEAD' as const, linkId: link.id }
-                    : { id: link.incomingLead?.id ?? link.incomingLeadId ?? '', label: link.incomingLead?.company ?? 'incoming', kind: 'INCOMING' as const, linkId: link.id }
-                ).filter((c) => c.id);
+                const companies: Link[] = f.leadLinks.map((link) => ({ id: link.lead?.id ?? link.leadId ?? '', label: link.lead?.name ?? 'lead', kind: 'LEAD' as const, linkId: link.id })).filter((c) => c.id);
                 const current = {
                   home: { kind: f.task ? ('task' as const) : f.project ? ('project' as const) : ('library' as const), id: f.task?.id ?? f.project?.id },
                   links: companies,
@@ -144,7 +131,6 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
                           projects={projectOpts}
                           tasks={taskOpts}
                           leads={leadOpts}
-                          incoming={incomingOpts}
                           compact
                         />
                       ) : null}

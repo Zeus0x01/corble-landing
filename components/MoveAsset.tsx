@@ -7,7 +7,7 @@ import { moveFile, linkCompanies, unlinkCompanies } from '@/lib/actions';
 
 export type HomeKind = 'library' | 'project' | 'task';
 export type Target = { id: string; label: string };
-export type Company = { id: string; label: string; kind: 'LEAD' | 'INCOMING' };
+export type Company = { id: string; label: string; kind: 'LEAD' };
 export type Link = Company & { linkId: string };
 
 export default function MoveAsset({
@@ -18,7 +18,6 @@ export default function MoveAsset({
   projects,
   tasks,
   leads,
-  incoming,
   compact,
 }: {
   assetId: string;
@@ -28,7 +27,6 @@ export default function MoveAsset({
   projects: Target[];
   tasks: Target[];
   leads: Company[];
-  incoming: Company[];
   compact?: boolean;
 }) {
   const toast = useToast();
@@ -39,12 +37,11 @@ export default function MoveAsset({
   const [homeId, setHomeId] = useState(home.id ?? '');
   const [initial] = useState<Set<string>>(() => new Set(links.map((l) => l.linkId)));
   const [rels, setRels] = useState<Map<string, Company>>(() => new Map(links.map((l) => [l.linkId, l])));
-  const [tab, setOpenTab] = useState<'LEAD' | 'INCOMING'>('LEAD');
   const [search, setSearch] = useState('');
 
   const companyOptions = useMemo(
-    () => (tab === 'LEAD' ? leads : incoming).filter((c) => c.label.toLowerCase().includes(search.toLowerCase())),
-    [tab, leads, incoming, search]
+    () => leads.filter((c) => c.label.toLowerCase().includes(search.toLowerCase())),
+    [leads, search]
   );
 
   function toggleCompany(c: Company) {
@@ -157,7 +154,7 @@ export default function MoveAsset({
               {rels.size > 0 ? (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '8px 0' }}>
                   {[...rels.entries()].map(([key, c]) => (
-                    <span key={key} className="pill" style={{ color: c.kind === 'INCOMING' ? 'var(--orange)' : 'var(--acid)', cursor: 'default' }}>
+                    <span key={key} className="pill" style={{ color: 'var(--acid)', cursor: 'default' }}>
                       {(c as Link).linkId ? '' : '+ '}{c.label}
                       {!busy ? (
                         <button
@@ -179,19 +176,17 @@ export default function MoveAsset({
                 <div className="sub" style={{ margin: '6px 0' }}>No companies linked.</div>
               )}
               <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                <button className={`btn sq${tab === 'LEAD' ? ' primary' : ''}`} onClick={() => setOpenTab('LEAD')} type="button">Leads ({leads.length})</button>
-                <button className={`btn sq${tab === 'INCOMING' ? ' primary' : ''}`} onClick={() => setOpenTab('INCOMING')} type="button">Incoming ({incoming.length})</button>
+                <span className="pill">Final Leads ({leads.length})</span>
                 <input className="textinput" style={{ flex: 1 }} placeholder="Search companies…" value={search} onChange={(e) => setSearch(e.target.value)} />
               </div>
               <div className="modal-typelist" style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--line)', borderRadius: 10, padding: 6 }}>
                 {companyOptions.length === 0 ? (
-                  <div className="sub" style={{ padding: 10 }}>No {tab === 'LEAD' ? 'leads' : 'incoming leads'} match.</div>
+                  <div className="sub" style={{ padding: 10 }}>No final leads match.</div>
                 ) : (
                   companyOptions.map((c) => (
                     <label key={c.kind + c.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 8px', borderRadius: 8, cursor: 'pointer' }}>
                       <input type="checkbox" checked={isLinked(c)} onChange={() => toggleCompany(c)} />
                       <span style={{ fontSize: 13 }}>{c.label}</span>
-                      {c.kind === 'INCOMING' ? <span className="itemsub">incoming</span> : null}
                     </label>
                   ))
                 )}

@@ -18,7 +18,6 @@ type Props = {
 const TITLES: Record<string, [string, string]> = {
   '/workspace': ['Overview', 'The whole operation, in one screen.'],
   '/workspace/leads': ['Leads / CRM (Final)', 'Every prospect and follow-up in one place.'],
-  '/workspace/leads/incoming': ['Incoming Leads', 'Scraped business data: research, verify, approve.'],
   '/workspace/projects': ['Projects', 'Delivery, ownership, budget, milestones.'],
   '/workspace/tasks': ['My Tasks', 'Your personal work, by when.'],
   '/workspace/tasks/team': ['Team Tasks', 'Overdue, claimable, handover status.'],

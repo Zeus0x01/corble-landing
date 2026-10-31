@@ -251,7 +251,6 @@ export async function deleteLead(raw: unknown): Promise<ActionResult> {
     }
     await logActivity(u.id, 'Lead deleted', lead.name);
     revalidatePath('/workspace/leads');
-    revalidatePath('/workspace/leads/incoming');
     revalidatePath('/workspace');
     return okRes(linked.length ? `Lead deleted. ${linked.length} promoted incoming lead(s) re-opened for review.` : 'Lead deleted.');
   } catch (e) {
@@ -270,7 +269,6 @@ export async function bulkDeleteLeads(raw: unknown): Promise<ActionResult> {
     }
     await logActivity(u.id, 'Leads bulk-deleted', `${out.count} of ${ids.length} selected${linked.length ? `; ${linked.length} incoming re-opened` : ''}`);
     revalidatePath('/workspace/leads');
-    revalidatePath('/workspace/leads/incoming');
     revalidatePath('/workspace');
     return okRes(`${out.count} lead${out.count === 1 ? '' : 's'} deleted.${linked.length ? ` ${linked.length} incoming re-opened.` : ''}`);
   } catch (e) {
@@ -304,7 +302,6 @@ export async function unpromoteIncoming(raw: unknown): Promise<ActionResult> {
         },
       });
     });
-    revalidatePath('/workspace/leads/incoming');
     return okRes('Un-promoted. The incoming lead is open for review again (final lead untouched).');
   } catch (e) {
     return fail(e);
@@ -1542,7 +1539,6 @@ export async function runVerification(raw: unknown): Promise<ActionResult> {
       await tx.incomingLead.update({ where: { id: lead.id }, data: { verification: newStatus } });
       await tx.activity.create({ data: { message: 'Lead verification run', detail: `${lead.company}: ${method} ? ${result}`, userId: u.id } });
     });
-    revalidatePath('/workspace/leads/incoming');
     return okRes(`Check recorded: ${result.replace(/_/g, ' ').toLowerCase()}. ${detail ?? ''}`.trim());
   } catch (e) {
     return fail(e);
@@ -1584,7 +1580,6 @@ export async function addResearch(raw: unknown): Promise<ActionResult> {
       });
       await tx.activity.create({ data: { message: 'Lead research added', detail: lead.company, userId: u.id } });
     });
-    revalidatePath('/workspace/leads/incoming');
     return okRes('Research note recorded.');
   } catch (e) {
     return fail(e);
@@ -1603,7 +1598,6 @@ export async function rejectIncoming(raw: unknown): Promise<ActionResult> {
       data: { processingStatus: input.restore ? 'UNDER_REVIEW' : 'REJECTED', reviewedById: u.id },
     });
     await logActivity(u.id, input.restore ? 'Lead restored for review' : 'Lead rejected', lead.company);
-    revalidatePath('/workspace/leads/incoming');
     return okRes(input.restore ? 'Lead restored.' : 'Lead marked rejected.');
   } catch (e) {
     return fail(e);
@@ -1626,7 +1620,6 @@ export async function bulkRejectIncoming(raw: unknown): Promise<ActionResult> {
       }
     }
     await logActivity(u.id, 'Leads bulk-rejected', `${n} rejected (skipped: ${skipped.promoted} promoted, ${skipped.rejected} already rejected)`);
-    revalidatePath('/workspace/leads/incoming');
     const parts = [`Rejected ${n}.`];
     if (skipped.promoted) parts.push(`${skipped.promoted} skipped (promoted).`);
     if (skipped.rejected) parts.push(`${skipped.rejected} already rejected.`);
@@ -1645,7 +1638,6 @@ export async function deleteIncoming(raw: unknown): Promise<ActionResult> {
     if (lead.processingStatus === 'PROMOTED') return { ok: false, error: 'Already promoted — delete the final lead instead.' };
     await db.incomingLead.delete({ where: { id } });
     await logActivity(u.id, 'Incoming lead deleted', lead.company);
-    revalidatePath('/workspace/leads/incoming');
     revalidatePath('/workspace');
     return okRes('Incoming lead deleted.');
   } catch (e) {
@@ -1668,7 +1660,6 @@ export async function bulkDeleteIncoming(raw: unknown): Promise<ActionResult> {
     }
     const n = ids.length - skipped;
     await logActivity(u.id, 'Incoming leads bulk-deleted', `${n} deleted (skipped: ${skipped} promoted)`);
-    revalidatePath('/workspace/leads/incoming');
     revalidatePath('/workspace');
     return okRes(n ? `${n} incoming lead${n === 1 ? '' : 's'} deleted.${skipped ? ` ${skipped} skipped (promoted).` : ''}` : 'Nothing deleted — all selected were promoted.');
   } catch (e) {
@@ -1767,7 +1758,6 @@ export async function promoteToFinal(raw: unknown): Promise<ActionResult> {
     if (out.code === 'already') {
       return { ok: true, message: `Already promoted earlier ï¿½ final lead ${out.id}.` };
     }
-    revalidatePath('/workspace/leads/incoming');
     revalidatePath('/workspace/leads');
     return okRes(`Promoted! Final lead created (${out.id}).`);
   } catch (e) {

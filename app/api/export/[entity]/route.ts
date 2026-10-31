@@ -93,30 +93,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ entity:
       ...body,
     ];
     filename = 'finance.csv';
-  } else if (entity === 'incoming') {
-    const data = await db.incomingLead.findMany({ orderBy: { receivedAt: 'desc' }, include: { reviewedBy: { select: { name: true } } } });
-    const body = data.map((l) => [
-      l.company,
-      l.contactPerson ?? '',
-      l.email ?? '',
-      l.phone ?? '',
-      l.website ?? '',
-      l.domain ?? '',
-      l.industry ?? '',
-      l.location ?? '',
-      l.source,
-      l.externalId ?? '',
-      l.verification,
-      l.processingStatus,
-      l.finalLeadId ?? '',
-      l.reviewedBy?.name ?? '',
-      l.receivedAt.toISOString(),
-    ] as (string | number)[]);
-    rows = [
-      ['Company', 'Contact', 'Email', 'Phone', 'Website', 'Domain', 'Industry', 'Location', 'Source', 'ExternalID', 'Verification', 'Processing', 'FinalLeadID', 'Reviewer', 'ReceivedAt'],
-      ...body,
-    ];
-    filename = 'incoming-leads.csv';
   } else if (entity === 'deliverables') {
     const data = await db.deliverable.findMany({
       orderBy: { createdAt: 'desc' },

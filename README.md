@@ -24,7 +24,6 @@ Workspace modules (all with CRUD, search, toasts, keyboard-escapable modals):
 | `/workspace/tasks/team` | Team Tasks: overdue / claimable / handover-in-progress board |
 | `/workspace/notifications` | Per-user notification feed, mark read / mark all read |
 | `/workspace/deliverables` | Deliverable versions + admin review (approve / request changes) |
-| `/workspace/leads/incoming` | Incoming Leads: research notes, verification checks, promote / reject |
 | `/workspace/automation` | Automation projects with phase gates and final delivery acceptance |
 | `/workspace/github` | Websites (GitHub): branch file browsing, single-file edit & commit, ZIP download |
 | `/workspace/vercel` | Deployments: connect Vercel project, fire preview / production deploys |
@@ -36,7 +35,7 @@ Workspace modules (all with CRUD, search, toasts, keyboard-escapable modals):
 | `/workspace/reports` | Finance + pipeline stats |
 | `/workspace/settings` | Company profile, currency, timezone; per-user theme |
 
-Plus: `/login`, CSV export API (`/api/export/leads|projects|tasks|finance|incoming|deliverables`), file upload/download API, protected landing lead endpoint (`/api/lead`).
+Plus: `/login`, CSV export API (`/api/export/leads|projects|tasks|finance|deliverables`), file upload/download API, protected landing lead endpoint (`/api/lead`).
 
 ### Task handover & deliverable flow
 
@@ -44,12 +43,10 @@ Plus: `/login`, CSV export API (`/api/export/leads|projects|tasks|finance|incomi
 2. Teammates request a takeover from **Team Tasks**; the owner (or any admin) approves once, assigning the requester and keeping the original owner in the audit trail. Requests dedupe per requester and auto-close when the owner completes or reassigns the task.
 3. Work products go through **Deliverables** (versioned), where admins approve or request changes; each review notifies the submitter.
 
-### Incoming leads pipeline (n8n → verification → Final Leads)
+### Final Leads import
 
-- **n8n ingest**: `POST /api/ingest/leads` with header `x-ingest-secret: $INGEST_WEBHOOK_SECRET`, JSON body `{ workflowId, recordId, fields: { company, email, phone, website, ... } }`. Idempotent per `workflowId:recordId`; duplicate emails/domains land flagged `DUPLICATE`, every run is rate-limited (120/min per IP).
-- **CSV import**: admins upload from Incoming Leads (preview → commit), rows land in a batch with dup/invalid counts.
-- **Verification**: one-click email-syntax / DNS / website-reachability checks (real DNS + 8s HTTP fetch, recorded as checks) + manual review entries + research notes with source URLs.
-- **Promotion**: promoting creates a Final Lead (owner = promoter), blocking when a Final record already matches email/company (visible conflict state).
+- Admins can upload a CSV from the Leads page or choose a stored CSV in Files and explicitly preview/import it into Final Leads.
+- Imports normalize supported headers, detect duplicates, preserve source data, and generate permanent Lead IDs.
 
 ### Automation phase-gated delivery
 

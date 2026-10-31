@@ -13,7 +13,7 @@ export default async function OverviewPage() {
   const now = new Date();
   const yearStart = new Date(now.getFullYear(), 0, 1);
 
-  const [leadAgg, activeProjects, taskByPriority, paymentReceived, expensesPaid, upcoming, activeProjectList, activity, months, userCount, incomingNew, incomingReview, handoversPending, deliverablesReview, deliverablesChanges, automationsActive, unreadAlerts] =
+  const [leadAgg, activeProjects, taskByPriority, paymentReceived, expensesPaid, upcoming, activeProjectList, activity, months, userCount, handoversPending, deliverablesReview, deliverablesChanges, automationsActive, unreadAlerts] =
     await Promise.all([
       db.lead.groupBy({ by: ['status'], _count: { _all: true }, _sum: { estValue: true } }),
       db.project.count({ where: { status: { in: ['IN_PROGRESS', 'REVIEW'] } } }),
@@ -32,8 +32,6 @@ export default async function OverviewPage() {
         GROUP BY 1
         ORDER BY 1`,
       db.user.count(),
-      db.incomingLead.count({ where: { processingStatus: 'NEW' } }),
-      db.incomingLead.count({ where: { processingStatus: 'UNDER_REVIEW' } }),
       db.handoverRequest.count({ where: { status: 'PENDING' } }),
       db.deliverable.count({ where: { status: { in: ['SUBMITTED', 'UNDER_REVIEW'] } } }),
       db.deliverable.count({ where: { status: 'CHANGES_REQUESTED' } }),
@@ -73,7 +71,6 @@ export default async function OverviewPage() {
       </div>
 
       <div className="kpis" style={{ marginTop: 4 }}>
-        <Link className="kpi" href="/workspace/leads/incoming" style={{ textDecoration: 'none' }}><div className="klabel">Incoming inbox</div><div className="num">{incomingNew}<small> / {incomingReview} in research</small></div><div className="kdelta"><span className={incomingNew > 0 ? 'warn' : 'up'}>{incomingNew > 0 ? 'needs triage' : 'queue processed'}</span></div></Link>
         <Link className="kpi" href="/workspace/tasks/team" style={{ textDecoration: 'none' }}><div className="klabel">Handovers pending</div><div className="num">{handoversPending}</div><div className="kdelta"><span className={handoversPending > 0 ? 'warn' : 'up'}>{handoversPending > 0 ? 'decisions waiting' : 'no open requests'}</span></div></Link>
         <Link className="kpi" href="/workspace/deliverables" style={{ textDecoration: 'none' }}><div className="klabel">Deliverables</div><div className="num">{deliverablesReview}<small> / {deliverablesChanges} fixing</small></div><div className="kdelta"><span className={deliverablesReview > 0 ? 'warn' : 'up'}>{deliverablesReview > 0 ? 'await review' : 'review queue clear'}</span></div></Link>
         <Link className="kpi" href="/workspace/automation" style={{ textDecoration: 'none' }}><div className="klabel">Automation projects</div><div className="num">{automationsActive}</div><div className="kdelta"><span className="up">phase-gated delivery</span></div></Link>
