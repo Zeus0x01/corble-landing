@@ -86,6 +86,16 @@ export default function DataTable({
     }
   }
 
+  // Always render exactly columns.length cells. Pad with "—" if a row has fewer cells.
+  // This guarantees the header labels never disappear even when data is incomplete.
+  function cellsForRow(r: DtRow): ReactNode[] {
+    const cells = [...r.cells];
+    while (cells.length < columns.length) {
+      cells.push('—');
+    }
+    return cells.slice(0, columns.length);
+  }
+
   return (
     <div className="tablewrap">
       {ids.length > 0 && (bulk?.length ?? 0) > 0 ? (
@@ -98,7 +108,7 @@ export default function DataTable({
               disabled={busy}
               onClick={() => {
                 if (b.confirm) {
-                  if (!window.confirm(b.confirm) ) return;
+                  if (!window.confirm(b.confirm)) return;
                   void runBulk(b);
                 } else void runBulk(b);
               }}
@@ -106,38 +116,57 @@ export default function DataTable({
               {b.label}
             </button>
           ))}
-          <button className="btn sq" disabled={busy} onClick={() => setSel(new Set())}>Clear</button>
+          <button className="btn sq" disabled={busy} onClick={() => setSel(new Set())}>
+            Clear
+          </button>
         </div>
       ) : null}
+
       <table className="table">
         <thead>
           <tr>
             <th className="selcol">
-              <input type="checkbox" aria-label="Select all rows" checked={allSelected} onChange={toggleAll} />
+              <input
+                type="checkbox"
+                aria-label="Select all rows"
+                checked={allSelected}
+                onChange={toggleAll}
+              />
             </th>
             {columns.map((c, i) => (
               <th
-                key={c.key ?? i}
+                key={c.key ?? `col-${i}`}
                 className={c.key ? 'sortable' : undefined}
                 onClick={c.key ? () => clickSort(c.key as string) : undefined}
                 title={c.key ? 'Toggle sort (click ↔ reverse ↳ off)' : undefined}
               >
                 {c.label}
-                {c.key && sortKey === c.key ? <span aria-hidden> {dir === 1 ? '▲' : '▼'}</span> : null}
+                {c.key && sortKey === c.key ? (
+                  <span aria-hidden> {dir === 1 ? '▲' : '▼'}</span>
+                ) : null}
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
           {sorted.length === 0 ? (
-            <tr><td colSpan={columns.length + 1} className="empty">{empty}</td></tr>
+            <tr>
+              <td colSpan={columns.length + 1} className="empty">
+                {empty}
+              </td>
+            </tr>
           ) : (
             sorted.map((r) => (
               <tr key={r.id} className={sel.has(r.id) ? 'selrow' : undefined}>
                 <td className="selcol">
-                  <input type="checkbox" aria-label={`Select row ${r.id}`} checked={sel.has(r.id)} onChange={() => toggle(r.id)} />
+                  <input
+                    type="checkbox"
+                    aria-label={`Select row ${r.id}`}
+                    checked={sel.has(r.id)}
+                    onChange={() => toggle(r.id)}
+                  />
                 </td>
-                {r.cells.map((cell, i) => (
+                {cellsForRow(r).map((cell, i) => (
                   <td key={i}>{cell}</td>
                 ))}
               </tr>
