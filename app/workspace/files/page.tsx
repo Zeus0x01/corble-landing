@@ -126,7 +126,7 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
                     <td>{f.webhook ? <span className="pill">{f.webhook.name}</span> : <span className="itemsub">Manual upload</span>}</td>
                     <td>{formatDate(f.createdAt)}</td>
                     <td style={{ display: 'flex', gap: 6 }}>
-                      <a className="btn sq" href={`/api/files/${f.id}`} aria-label={`Download ${f.name}`}>↓</a>
+                      <a className="btn sq" href={`/api/files/${f.id}`} aria-label={`Download ${f.name}`} title={`Download ${f.name}`}>⇩</a>
                       {isAdmin && (f.mimeType === 'text/csv' || /\.(xlsx|xls)$/i.test(f.name)) ? <FileLeadImport assetId={f.id} fileName={f.name} /> : null}
                       {isAdmin || f.uploadedById === userId ? (
                         <MoveAsset

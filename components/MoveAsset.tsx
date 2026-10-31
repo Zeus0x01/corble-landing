@@ -65,6 +65,10 @@ export default function MoveAsset({
   }
 
   async function save() {
+    if (homeKind !== 'library' && !homeId) {
+      toast(`Choose a ${homeKind} before saving.`, 'err');
+      return;
+    }
     setBusy(true);
     const msgs: string[] = [];
     let err = '';
@@ -119,7 +123,7 @@ export default function MoveAsset({
 
   return (
     <>
-      <button className={compact ? 'btn sq' : 'btn'} disabled={busy} onClick={() => setOpen(true)} title={`Move / link ${assetName}`}>
+      <button className={compact ? 'btn sq' : 'btn'} disabled={busy} onClick={() => setOpen(true)} title={`Organize ${assetName}`} aria-label={`Organize ${assetName}`}>
         ⇄
       </button>
       {open ? (
@@ -136,11 +140,11 @@ export default function MoveAsset({
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <strong style={{ fontSize: 12 }}>Home:</strong>
-              <button className={`btn sq${homeKind === 'library' ? ' primary' : ''}`} onClick={() => markHome('library')}>Library</button>
-              <button className={`btn sq${homeKind === 'project' ? ' primary' : ''}`} onClick={() => markHome('project')}>Project</button>
-              <button className={`btn sq${homeKind === 'task' ? ' primary' : ''}`} onClick={() => markHome('task')}>Task</button>
+              <button type="button" className={`btn sq${homeKind === 'library' ? ' primary' : ''}`} onClick={() => markHome('library')}>Library</button>
+              <button type="button" className={`btn sq${homeKind === 'project' ? ' primary' : ''}`} onClick={() => markHome('project')}>Project</button>
+              <button type="button" className={`btn sq${homeKind === 'task' ? ' primary' : ''}`} onClick={() => markHome('task')}>Task</button>
               {homeKind !== 'library' ? (
-                <select style={{ flex: 1, minWidth: 180 }} value={homeId} onChange={(e) => setHomeId(e.target.value)}>
+                <select style={{ flex: 1, minWidth: 180 }} value={homeId} onChange={(e) => setHomeId(e.target.value)} aria-label={`Choose ${homeKind}`}>
                   <option value="">— choose {homeKind} —</option>
                   {(homeKind === 'project' ? projects : tasks).map((o) => (
                     <option key={o.id} value={o.id}>{o.label}</option>
@@ -194,8 +198,8 @@ export default function MoveAsset({
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-              <button className="btn" onClick={() => { setOpen(false); reset(); }}>Cancel</button>
-              <button className="btn primary" disabled={busy || !dirty} onClick={save}>
+              <button type="button" className="btn" onClick={() => { setOpen(false); reset(); }}>Cancel</button>
+              <button type="button" className="btn primary" disabled={busy || !dirty || (homeKind !== 'library' && !homeId)} onClick={save}>
                 {busy ? 'Saving…' : 'Save changes'}
               </button>
             </div>

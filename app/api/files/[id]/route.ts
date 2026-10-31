@@ -1,6 +1,6 @@
 import { db } from '@/lib/db';
 import { dbUser } from '@/lib/guard';
-import { readLocalUpload } from '@/lib/storage';
+import { fileDownloadUrl, readLocalUpload } from '@/lib/storage';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,7 +14,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (!asset) return new Response('Not found', { status: 404 });
 
   if (asset.storage === 's3') {
-    return new Response('Use the presigned URL link on the Files page.', { status: 308 });
+    const url = await fileDownloadUrl(asset.id);
+    if (!url) return new Response('File download URL unavailable', { status: 503 });
+    return Response.redirect(url, 302);
   }
   if (process.env.NODE_ENV === 'production' && asset.storage === 'local') {
     return new Response('Local storage is only available in development. Configure S3 env vars.', { status: 410 });

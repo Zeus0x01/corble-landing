@@ -2451,6 +2451,11 @@ export async function moveFile(raw: unknown): Promise<ActionResult> {
         taskId: z.string().nullable().optional(),
       })
       .parse(raw);
+    if ((input.projectId ?? null) === null && (input.taskId ?? null) === null) {
+      const current = await db.fileAsset.findUnique({ where: { id: input.assetId }, select: { projectId: true, taskId: true } });
+      if (!current) return { ok: false, error: 'File not found.' };
+      if (current.projectId === null && current.taskId === null) return okRes('File is already in the Library.');
+    }
     const asset = await db.fileAsset.findUnique({ where: { id: input.assetId }, select: { id: true, uploadedById: true, name: true } });
     if (!asset) return { ok: false, error: 'File not found.' };
     if (u.role !== 'ADMIN' && asset.uploadedById !== u.id) return { ok: false, error: 'Only admins (or the uploader) can move files.' };
