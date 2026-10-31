@@ -5,7 +5,10 @@
  *
  * Env:
  *   RESEND_API_KEY  – required to actually send
- *   EMAIL_FROM      – e.g. "Corble <tasks@yourdomain.com>" (must be verified in Resend)
+ *   EMAIL_FROM_NAME – display name, defaults to Corble
+ *   EMAIL_FROM_ALERTS – sender for team/system alerts
+ *   EMAIL_FROM_HELLO – sender for customer-facing email
+ *   EMAIL_FROM_SUPPORT – optional support sender
  *   APP_URL         – e.g. https://corble.net (for links in the email)
  */
 
@@ -14,11 +17,14 @@ type SendArgs = {
   subject: string;
   html: string;
   text?: string;
+  replyTo?: string;
+  from?: string;
 };
 
-export async function sendEmail({ to, subject, html, text }: SendArgs): Promise<{ ok: boolean; error?: string }> {
+export async function sendEmail({ to, subject, html, text, replyTo, from }: SendArgs): Promise<{ ok: boolean; error?: string }> {
   const key = process.env.RESEND_API_KEY;
-  const from = process.env.EMAIL_FROM || 'Corble <onboarding@resend.dev>';
+  const sender = from || process.env.EMAIL_FROM_HELLO || process.env.EMAIL_FROM || 'onboarding@resend.dev';
+  const fromAddress = sender.includes('<') ? sender : `${process.env.EMAIL_FROM_NAME || 'Corble'} <${sender}>`;
 
   if (!key) {
     console.info('[mail] RESEND_API_KEY not set — skipping email to', to, '·', subject);
@@ -33,11 +39,12 @@ export async function sendEmail({ to, subject, html, text }: SendArgs): Promise<
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from,
+        from: fromAddress,
         to: [to],
         subject,
         html,
         text: text ?? html.replace(/<[^>]+>/g, ' '),
+        ...(replyTo ? { reply_to: replyTo } : {}),
       }),
     });
 
@@ -53,7 +60,7 @@ export async function sendEmail({ to, subject, html, text }: SendArgs): Promise<
           'Resend can only send to the account owner address until you verify EMAIL_FROM. ' +
           'Verify a domain (e.g. corble.net) at resend.com/domains and set EMAIL_FROM accordingly.';
       }
-      console.error('[mail] Resend error', res.status, hint || body, { from, to, subject });
+      console.error('[mail] Resend error', res.status, hint || body, { from: fromAddress, to, subject });
       return { ok: false, error: hint ? `Mail provider error ${res.status}: ${hint}` : `Mail provider error ${res.status}` };
     }
     return { ok: true };

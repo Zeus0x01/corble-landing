@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { allocateLeadCode } from '@/lib/lead-id';
+import { sendEmail } from '@/lib/mail';
 
 const schema = z.object({
   name: z.string().min(2).max(120),
@@ -45,9 +46,29 @@ export async function POST(req: Request) {
       },
     });
 
+    if (admin?.email) {
+      await sendEmail({
+        to: admin.email,
+        from: process.env.EMAIL_FROM_ALERTS,
+        replyTo: data.email,
+        subject: `New website enquiry from ${data.name}`,
+        html: `<h2>New Corble website enquiry</h2><p><strong>Name:</strong> ${escapeHtml(data.name)}</p><p><strong>Email:</strong> ${escapeHtml(data.email)}</p><p><strong>Business:</strong> ${escapeHtml(data.business || 'Not provided')}</p><p><strong>Need:</strong> ${escapeHtml(data.need || 'Not specified')}</p><p>${escapeHtml(data.message || 'No message provided')}</p>`,
+      });
+    }
+    await sendEmail({
+      to: data.email,
+      from: process.env.EMAIL_FROM_HELLO,
+      subject: 'Thanks for contacting Corble',
+      html: `<p>Hi ${escapeHtml(data.name)},</p><p>Thanks for reaching out to Corble. We received your enquiry and will review it before replying.</p><p>— Corble</p>`,
+    });
+
     return Response.json({ ok: true });
   } catch (e) {
     console.error('Lead error', e);
     return Response.json({ ok: false }, { status: 500 });
+  }
+
+  function escapeHtml(value: string) {
+    return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 }

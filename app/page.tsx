@@ -43,14 +43,14 @@ function Nav() {
       <div className="container nav">
         <Logo />
         <nav className="nav-links" aria-label="Main">
-          <a href="#platform">Platform</a>
-          <a href="#how">How it works</a>
+          <a href="#services">Services</a>
+          <a href="#how">How we work</a>
           <a href="#pricing">Pricing</a>
-          <a href="#customers">Customers</a>
+          <a href="#about">About</a>
         </nav>
         <div className="nav-actions">
           <a className="btn btn-ghost" href="/login">Client Portal</a>
-          <a className="btn btn-lime" href="#contact">Start Free <span aria-hidden="true">→</span></a>
+          <a className="btn btn-lime" href="https://wa.me/201028160925" target="_blank" rel="noopener noreferrer">Contact Us <span aria-hidden="true">→</span></a>
           <button
             className={`menu-btn${open ? ' open' : ''}`}
             aria-label="Toggle menu"
@@ -61,10 +61,10 @@ function Nav() {
           </button>
         </div>
         <nav id="mobileMenu" className={`mobile-menu${open ? ' open' : ''}`} aria-label="Mobile">
-          <a href="#platform" onClick={closeMenu}>Platform</a>
-          <a href="#how" onClick={closeMenu}>How it works</a>
+          <a href="#services" onClick={closeMenu}>Services</a>
+          <a href="#how" onClick={closeMenu}>How we work</a>
           <a href="#pricing" onClick={closeMenu}>Pricing</a>
-          <a href="#customers" onClick={closeMenu}>Customers</a>
+          <a href="#about" onClick={closeMenu}>About</a>
           <a href="/login" onClick={closeMenu}>Client Portal</a>
           <a href="#contact" onClick={closeMenu}>Start Free →</a>
         </nav>
@@ -85,20 +85,18 @@ function Hero() {
       <div className="container hero-grid scene">
         <div>
           <span className="eyebrow"><span className="pulse-dot" />Live operations, handled</span>
-          <h1>Decisions,<br />not <span className="shimmer">dashboards.</span></h1>
+          <h1>Automate Smarter.<br /><span className="shimmer">Secure by Design.</span></h1>
           <p className="lead">
-            Corble builds practical websites and automation systems that capture leads,
-            answer customers, and run the busywork — so you save hours every week and grow
-            while you focus on real work.
+            We build intelligent business automation backed by cybersecurity expertise, helping businesses streamline operations without overlooking security.
           </p>
           <div className="hero-ctas">
-            <a className="btn btn-lime" href="#contact">Start Free <span aria-hidden="true">→</span></a>
-            <a className="btn btn-ghost" href="#how">Watch 2-min tour <span aria-hidden="true">▶</span></a>
+            <a className="btn btn-lime" href="https://wa.me/201028160925" target="_blank" rel="noopener noreferrer">Discuss Your Project <span aria-hidden="true">→</span></a>
+            <a className="btn btn-ghost" href="#how">How we work <span aria-hidden="true">↓</span></a>
           </div>
           <div className="hero-trust">
-            <span><i />11 hrs saved / week</span>
-            <span><i />40+ integrations</span>
-            <span><i />SOC 2 ready</span>
+            <span><i />Cybersecurity expertise</span>
+            <span><i />Secure automation</span>
+            <span><i />Reliable integrations</span>
           </div>
         </div>
         <div className="mockup-wrap">
@@ -138,11 +136,10 @@ function Hero() {
 
 function Problem() {
   const words = [
-    ...'Every operations team drowns in dashboards nobody reads.'.split(' ').map((t) => ({ t, c: 'dim' })),
-    { t: 'Corble', c: '' }, { t: 'is', c: '' }, { t: 'for', c: '' }, { t: 'operators', c: '' },
-    { t: 'who', c: '' }, { t: 'don’t', c: '' }, { t: 'want', c: '' }, { t: 'another', c: 'hi' },
-    { t: 'tool', c: 'hi' }, { t: '—', c: '' }, { t: 'they', c: '' }, { t: 'want', c: '' },
-    { t: 'results.', c: 'hi' },
+    ...'Automation should make work simpler — and security should be part of the design.'.split(' ').map((t) => ({ t, c: 'dim' })),
+    { t: 'Corble', c: '' }, { t: 'combines', c: '' }, { t: 'intelligent', c: '' }, { t: 'automation', c: 'hi' },
+    { t: 'with', c: '' }, { t: 'cybersecurity', c: 'hi' }, { t: 'expertise', c: '' }, { t: 'from', c: '' },
+    { t: 'the', c: '' }, { t: 'first', c: '' }, { t: 'design.', c: 'hi' },
   ];
   return (
     <section className="problem" aria-labelledby="problem-title">
@@ -155,12 +152,12 @@ function Problem() {
             <span key={i} className={`w ${w.c}`}>{w.t}{' '}</span>
           ))}
         </h2>
-        <p className="problem-sub">So Corble doesn’t show you charts. It watches your workflows, answers your customers, and tells you exactly what needs a decision — one line, in plain language.</p>
+        <p className="problem-sub">We design reliable workflows, integrations, and data handling around the way your business actually operates — with security-conscious engineering throughout.</p>
         <div className="problem-pills" role="list" aria-label="Common tooling problems Corble removes">
-          <span className="problem-pill" role="listitem"><span className="bad">✕</span> 12 open tabs & spreadsheets</span>
-          <span className="problem-pill" role="listitem"><span className="bad">✕</span> Leads answered “by tomorrow”</span>
-          <span className="problem-pill" role="listitem"><span className="bad">✕</span> Reports nobody opens</span>
-          <span className="problem-pill win" role="listitem"><span className="lime" style={{ fontWeight: 800 }}>✓</span> One system, working quietly</span>
+          <span className="problem-pill" role="listitem"><span className="bad">✕</span> Fragile manual workflows</span>
+          <span className="problem-pill" role="listitem"><span className="bad">✕</span> Disconnected systems</span>
+          <span className="problem-pill" role="listitem"><span className="bad">✕</span> Security added too late</span>
+          <span className="problem-pill win" role="listitem"><span className="lime" style={{ fontWeight: 800 }}>✓</span> Secure automation by design</span>
         </div>
       </div>
     </section>
@@ -168,7 +165,7 @@ function Problem() {
 }
 
 function Marquee() {
-  const ticks = ['Practical websites', 'Automation systems', 'WhatsApp flows', 'Live bookings', 'AI replies', 'Lead routing', 'Anomaly alerts', '40+ integrations'];
+  const ticks = ['Business automation', 'Secure integrations', 'Workflow engineering', 'Access control', 'Secure data handling', 'Monitoring', 'Reliable systems'];
   return (
     <div className="marquee" aria-hidden="true">
       <div className="marquee-track">
@@ -189,19 +186,19 @@ const icons = {
 
 function Features() {
   const items = [
-    { icon: icons.connect, t: 'Connect', d: 'Plug in your website, WhatsApp, bookings, and every tool you already use — 40+ integrations.' },
-    { icon: icons.ask, t: 'Ask / Automate', d: 'Describe the task in plain language. Corble turns it into a working automation, end to end.' },
-    { icon: icons.anomaly, t: 'Anomalies / Insights', d: 'Get pinged the moment something drifts — missed calls, slow replies, lost leads — with a suggested fix.' },
-    { icon: icons.agents, t: 'Agents / Workflows', d: 'Spawn on-duty agents that follow up, route requests, and keep your pipeline moving 24/7.' },
+    { icon: icons.connect, t: 'Workflow automation', d: 'Automate repetitive business processes and connect the systems your team relies on.' },
+    { icon: icons.ask, t: 'AI-powered processes', d: 'Use practical AI where it improves research, routing, communication, and decision support.' },
+    { icon: icons.anomaly, t: 'Security-driven engineering', d: 'Build around access control, authentication, secure data handling, and integration reviews.' },
+    { icon: icons.agents, t: 'Reliable operations', d: 'Add monitoring, error handling, documentation, and clear ownership to every workflow.' },
   ];
   return (
-    <section className="section" id="platform">
+    <section className="section" id="services">
       <div className="container">
         <div className="section-head reveal">
-          <span className="kicker"><b>[ 01 ]</b> platform</span>
-          <span className="eyebrow">The platform</span>
-          <h2>Serious tools for<br />serious people.</h2>
-          <p>Four building blocks. One operating system for your business.</p>
+          <span className="kicker"><b>[ 01 ]</b> capabilities</span>
+          <span className="eyebrow">Services</span>
+          <h2>Automation with<br /><span className="shimmer">security built in.</span></h2>
+          <p>Cybersecurity expertise informs how we design and implement every automation solution.</p>
         </div>
         <div className="features">
           {items.map((it, i) => (
@@ -248,29 +245,29 @@ function Workflow() {
 
   const boards = [
     {
-      tag: 'Live metric', h: 'Leads, flowing in',
-      p: 'Every inquiry from your website, WhatsApp, and phone lands in one stream — sorted, scored, and never lost.',
-      rows: [['Website form → pipeline', 'auto ✓'], ['WhatsApp message → pipeline', 'auto ✓'], ['Missed call → callback task', 'auto ✓'], ['Booking request → calendar', 'auto ✓']],
+      tag: 'Understand', h: 'Start with the workflow',
+      p: 'We map the process, systems, data, and access needs before recommending what should be automated.',
+      rows: [['Current process and goals', 'mapped'], ['Systems and integrations', 'reviewed'], ['Data and access boundaries', 'defined']],
       hero: null,
     },
     {
-      tag: 'Automation', h: 'Busywork, on rails',
-      p: 'Corble drafts the follow-up in your tone, sends it on schedule, and chases the ones that go quiet — the way your best employee would.',
-      rows: [['Draft reply to new inquiry', 'ready to approve'], ['Send follow-up after 24h', 'scheduled ✓'], ['Re-touch unanswered leads', 'scheduled ✓']],
-      hero: { n: '3.2×', l: 'faster lead response' },
+      tag: 'Build', h: 'Implement securely',
+      p: 'We connect the right tools, add appropriate controls, and document how the workflow behaves.',
+      rows: [['Workflow architecture', 'designed'], ['Authentication and permissions', 'configured'], ['Testing and documentation', 'included']],
+      hero: null,
     },
     {
-      tag: 'Anomaly saved hours', h: 'Corble keeps watch',
-      p: 'When something drifts — slow replies, spike in missed calls, bookings dropping — you get one plain-language ping with the fix already drafted.',
-      rows: [['Missed-call rate spiked 2.4×', 'fix proposed'], ['Box 1: 5 replies awaiting approval', 'drafted ✓'], ['Response time dropped 41%', 'healthy ✓']],
-      hero: { n: '11 hrs', l: 'saved per week, per team' },
+      tag: 'Improve', h: 'Monitor and refine',
+      p: 'After launch, monitoring and error handling make it easier to maintain dependable operations as your needs change.',
+      rows: [['Errors and edge cases', 'tracked'], ['Workflow health', 'monitored'], ['Changes and ownership', 'documented']],
+      hero: null,
     },
   ];
 
   const steps = [
-    { t: 'Connect everything', d: 'Your website, WhatsApp, calendar, payments — plugged into one quiet operating layer.' },
-    { t: 'Let it run the busywork', d: 'Follow-ups, routing, bookings, reminders — working while you do the real work.' },
-    { t: 'Act on one clear ping', d: 'No dashboards to read. Corble pings you only when a decision actually needs you.' },
+    { t: 'Understand the process', d: 'We identify the business outcome, current workflow, systems, and security considerations.' },
+    { t: 'Build the right solution', d: 'We implement automation and integrations with clear access, data, and failure-handling decisions.' },
+    { t: 'Support dependable operations', d: 'We document the system and help you monitor, maintain, and improve it over time.' },
   ];
 
   return (
@@ -279,8 +276,8 @@ function Workflow() {
         <div className="container stage">
           <div className="stage-head">
             <span className="kicker"><b>[ 02 ]</b> product tour</span>
-            <h2 id="work-title">Your business, on <span className="shimmer">autopilot.</span></h2>
-            <p style={{ color: 'var(--muted)', margin: '10px 0 0', maxWidth: 520 }}>Scroll through what a Corble-built workspace actually does all day.</p>
+            <h2 id="work-title">How we <span className="shimmer">work.</span></h2>
+            <p style={{ color: 'var(--muted)', margin: '10px 0 0', maxWidth: 520 }}>A practical path from business need to secure, maintainable automation.</p>
           </div>
           <div className="stage-grid">
             <div style={{ position: 'relative' }}>
@@ -316,9 +313,6 @@ function Workflow() {
                     <small className="tag"><span className="pulse-dot" />{b.tag}</small>
                     <h4>{b.h}</h4>
                     <p>{b.p}</p>
-                    {b.hero && (
-                      <div className="board-hero"><b>{b.hero.n}</b><span className="slabel">{b.hero.l}</span></div>
-                    )}
                     <div className="board-rows">
                       {b.rows.map(([a, o]) => (
                         <div key={a} className="board-row"><span>{a}</span><span className="ok">{o}</span></div>
@@ -336,53 +330,19 @@ function Workflow() {
 }
 
 function Proof() {
-  const stats = [
-    { n: '11 hrs', l: 'Saved per week, per team' },
-    { n: '3.2×', l: 'Faster lead response' },
-    { n: '40+', l: 'Integrations ready to go' },
-    { n: '98%', l: 'Requests answered same-day' },
-  ];
-  const quotes = [
-    {
-      q: '“We deleted three tools and a spreadsheet. Inquiries now get answered in minutes, not mornings. Corble quietly runs our front desk.”',
-      n: 'Mariam E.', r: 'Owner, dental clinic', i: 'M',
-    },
-    {
-      q: '“I didn’t want another dashboard. I wanted less work. Corble follows up with every lead automatically — we closed 40% more bookings.”',
-      n: 'Omar S.', r: 'Founder, retail & service brand', i: 'O',
-    },
-    {
-      q: '“It feels like hiring a careful operations person who never sleeps. Anomalies get flagged with the fix already drafted.”',
-      n: 'Laila K.', r: 'Operations manager, call center', i: 'L',
-    },
-  ];
   return (
-    <section className="section cv" id="customers">
+    <section className="section cv" id="about">
       <div className="container">
         <div className="section-head reveal centered">
-          <span className="eyebrow"><span className="pulse-dot" />Trusted by operators at</span>
-          <h2>Built for teams that<br />actually run things.</h2>
-        </div>        <div className="logos reveal">
-          <span>ClinicCare+</span><span>BloomSalon</span><span>Mercury Retail</span><span>VoxCall Centers</span><span>HomeFix Services</span>
+          <span className="kicker"><b>[ 03 ]</b> about Corble</span>
+          <span className="eyebrow">About Corble</span>
+          <h2>Engineering that respects<br /><span className="shimmer">how business works.</span></h2>
+          <p>Corble helps businesses turn repetitive work into dependable systems. We combine workflow automation, intelligent integrations, and security-conscious development so technology supports the business instead of creating new operational risk.</p>
         </div>
-        <div className="stats" style={{ marginTop: '40px' }}>
-          {stats.map((s, i) => (
-            <div key={s.l} className="stat reveal" data-tilt data-tilt-max="4" style={{ ['--d' as never]: `${i * 80}ms` }}>
-              <strong>{s.n}</strong><span>{s.l}</span>
-            </div>
-          ))}
-        </div>
-        <div className="testimonials" style={{ marginTop: '18px' }}>
-          {quotes.map((t, i) => (
-            <article key={t.n} className="tcard reveal" style={{ ['--d' as never]: `${i * 110}ms` }}>
-              <div className="stars" aria-hidden="true">★★★★★</div>
-              <blockquote>{t.q}</blockquote>
-              <div className="qavatar">
-                <span className="qa">{t.i}</span>
-                <span><b>{t.n}</b>{t.r}</span>
-              </div>
-            </article>
-          ))}
+        <div className="features">
+          <article className="fcard reveal"><div className="ficon">{icons.connect}</div><h3>Business context first</h3><p>We start with the process and outcome, not a tool or trend.</p></article>
+          <article className="fcard reveal"><div className="ficon">{icons.anomaly}</div><h3>Security-conscious by default</h3><p>Access, data handling, integrations, and failure modes are considered from the beginning.</p></article>
+          <article className="fcard reveal"><div className="ficon">{icons.agents}</div><h3>Maintainable systems</h3><p>Clear documentation and ownership help your team operate what we build.</p></article>
         </div>
       </div>
     </section>
@@ -392,29 +352,34 @@ function Proof() {
 function Pricing() {
   const plans = [
     {
-      name: 'Starter', price: 'Free', per: '/ forever', desc: 'See it working before you pay a thing.',
-      feats: ['1 automation workflow', 'Website starter in your brand', 'WhatsApp lead capture', 'Email support'],
+      name: 'Starter', price: '8,000', per: 'EGP', usd: 'Approximately $143 USD', desc: 'A focused first workflow for a clear business need.',
+      feats: ['One custom automation workflow', 'Up to 3 integrations', 'Basic security configuration', 'Testing and documentation', '14 days of support'],
       cta: 'Start Free', featured: false,
     },
     {
-      name: 'Pro', price: '$49', per: '/ month', desc: 'For growing teams drowning in busywork.',
-      feats: ['Unlimited workflows', 'Anomaly alerts + fix suggestions', 'AI-drafted follow-ups', '40+ integrations', 'Priority support'],
-      cta: 'Start Free →', featured: true,
+      name: 'Growth', price: '15,000', per: 'EGP', usd: 'Approximately $268 USD', desc: 'For teams connecting multiple workflows and systems.',
+      feats: ['Up to 3 automation workflows', 'Up to 5 integrations', 'CRM or database integration', 'Basic business dashboard', 'Security review and error monitoring', '30 days of support'],
+      cta: 'Discuss Your Project', featured: true,
     },
     {
-      name: 'Business', price: 'Custom', per: ' talk to us', desc: 'Custom systems built around how you operate.',
-      feats: ['Custom builds & agents', 'Dedicated onboarding', 'SOC 2 readiness support', 'SLA + monthly review'],
-      cta: 'Book a Consultation', featured: false,
+      name: 'Business', price: '25,000', per: 'EGP', usd: 'Approximately $446 USD', desc: 'A broader automation system with deeper integration needs.',
+      feats: ['Up to 6 automation workflows', 'Multiple system integrations', 'AI integration where applicable', 'Custom business dashboard', 'Advanced workflow security review', 'Monitoring and documentation', '30 days of support'],
+      cta: 'Discuss Your Project', featured: false,
+    },
+    {
+      name: 'Custom Solutions', price: 'Custom', per: 'pricing', usd: 'Scope-based proposal', desc: 'For complex systems that need a tailored architecture.',
+      feats: ['Complex automation architectures', 'Custom AI-powered systems', 'Security-focused automation projects', 'Custom integrations and infrastructure', 'Tailored support and maintenance'],
+      cta: 'Discuss Your Project', featured: false,
     },
   ];
   return (
     <section className="section cv" id="pricing" style={{ background: 'var(--bg-2)', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
       <div className="container">
         <div className="section-head reveal centered">
-          <span className="kicker"><b>[ 03 ]</b> pricing</span>
+          <span className="kicker"><b>[ 04 ]</b> pricing</span>
           <span className="eyebrow">Pricing</span>
-          <h2>Pay for outcomes,<br />not clicks.</h2>
-          <p>Tell us what slows you down. Cancel anytime — you keep the systems you use.</p>
+          <h2>Clear scope.<br /><span className="shimmer">Practical investment.</span></h2>
+          <p>Every project is confirmed in EGP based on its final scope and requirements.</p>
         </div>
         <div className="plans">
           {plans.map((p, i) => (
@@ -422,6 +387,7 @@ function Pricing() {
               {p.featured && <span className="plan-badge">Most popular</span>}
               <h3>{p.name}</h3>
               <div className="price">{p.price} <small>{p.per}</small></div>
+              <div className="price-usd">{p.usd}</div>
               <p className="plan-desc">{p.desc}</p>
               <ul>
                 {p.feats.map(f => <li key={f}>{f}</li>)}
@@ -429,6 +395,15 @@ function Pricing() {
               <a className={`btn ${p.featured ? 'btn-lime' : 'btn-dark'}`} href="#contact">{p.cta}</a>
             </article>
           ))}
+        </div>
+        <p className="pricing-note">USD equivalents are indicative. Final pricing is confirmed in EGP based on project scope. Third-party API, hosting, and external service costs are quoted separately.</p>
+        <div className="maintenance-card reveal">
+          <div><span className="eyebrow">Maintenance plans</span><h3>Keep your workflows dependable.</h3><p>Maintenance scope and included support depend on the selected plan.</p></div>
+          <div className="maintenance-plans">
+            <span><b>Basic</b><strong>1,500 EGP</strong><small>/ month</small></span>
+            <span><b>Growth</b><strong>3,000 EGP</strong><small>/ month</small></span>
+            <span><b>Business</b><strong>5,000 EGP</strong><small>/ month</small></span>
+          </div>
         </div>
       </div>
     </section>
@@ -448,7 +423,7 @@ function FAQ() {
     <section className="section cv" id="faq">
       <div className="container">
         <div className="section-head reveal centered">
-          <span className="kicker"><b>[ 04 ]</b> faq</span>
+          <span className="kicker"><b>[ 05 ]</b> faq</span>
           <span className="eyebrow">FAQ</span>
           <h2>Questions, answered.</h2>
         </div>
@@ -513,20 +488,20 @@ function Contact() {
     <section className="section cv" id="contact">
       <div className="container contact-wrap">
         <div className="contact-info reveal">
-          <span className="kicker" style={{ justifyContent: 'center' }}><b>[ 05 ]</b> contact</span>
-          <span className="eyebrow"><span className="pulse-dot" />Start free</span>
+          <span className="kicker" style={{ justifyContent: 'center' }}><b>[ 06 ]</b> contact</span>
+          <span className="eyebrow"><span className="pulse-dot" />Let’s talk</span>
           <h2 style={{ fontSize: 'clamp(2rem, 4vw, 3rem)', margin: '16px 0 12px' }}>
-            Let’s build a smarter way to work.
+            Discuss your project.
           </h2>
-          <p>Tell us what slows your business down. We’ll come back with a practical next step — a real recommendation, not a sales deck.</p>
+          <p>Tell us what you want to improve. We’ll come back with a practical recommendation for automation, integrations, and security-conscious implementation.</p>
           <div className="contact-points">
-            <div>✓ <span><b>Free 20-min consultation</b> — walk us through your day</span></div>
-            <div>✓ <span><b>A live automation in your first week</b> — proof, not promises</span></div>
-            <div>✓ <b>No contracts. Cancel anytime.</b></div>
+            <div>✓ <span><b>WhatsApp</b> — quick project conversations</span></div>
+            <div>✓ <span><b>Email</b> — hello@corble.net</span></div>
+            <div>✓ <span><b>Facebook</b> — follow Corble and get in touch</span></div>
           </div>
           <div style={{ marginTop: '28px' }} className="hero-trust">
-            <span><i />hello@corble.net</span>
-            <span><i />Replies within 1 business day</span>
+            <a href="https://wa.me/201028160925" target="_blank" rel="noopener noreferrer"><i />Contact Us on WhatsApp</a>
+            <a href="https://www.facebook.com/share/1Cer4m193o/" target="_blank" rel="noopener noreferrer"><i />Facebook</a>
           </div>
         </div>
         <form className="form-card reveal form-card--contact" onSubmit={submit} noValidate>
@@ -562,7 +537,7 @@ function Contact() {
           </div>
           <button className="btn btn-lime" style={{ width: '100%' }} disabled={state === 'sending'}>
             {state === 'sending' ? <span className="spin" /> : null}
-            {state === 'sending' ? 'Sending…' : 'Request my free call →'}
+            {state === 'sending' ? 'Sending…' : 'Get a Custom Quote →'}
           </button>
           {status}
           <p className="form-note">No spam, no pressure. Just a straight answer.</p>
@@ -576,9 +551,9 @@ function FinalCTA() {
   return (
     <section className="final-cta cv">
       <span className="eyebrow"><span className="pulse-dot" />Ready when you are</span>
-      <h2>Stop drowning in tools.<br /><span className="shimmer">Start getting results.</span></h2>
-      <p>Join the operators who traded their dashboard pile for a system that works — quietly, every day.</p>
-      <a className="btn btn-lime" href="#contact">Start Free <span aria-hidden="true">→</span></a>
+      <h2>Build automation that works.<br /><span className="shimmer">Securely.</span></h2>
+      <p>Bring us the workflow, integration, or system you want to improve.</p>
+      <a className="btn btn-lime" href="https://wa.me/201028160925" target="_blank" rel="noopener noreferrer">Discuss Your Project <span aria-hidden="true">→</span></a>
     </section>
   );
 }
@@ -589,22 +564,22 @@ function Footer() {
       <div className="container footer-main">
         <div className="footer-brand">
           <Logo />
-          <p>Practical websites and automation systems that help real businesses work smarter.</p>
+          <p>Secure business automation powered by cybersecurity expertise.</p>
         </div>
         <div>
-          <h4>Platform</h4>
+          <h4>Services</h4>
           <ul>
-            <li><a href="#platform">Connect</a></li>
-            <li><a href="#platform">Automate</a></li>
-            <li><a href="#platform">Anomalies</a></li>
-            <li><a href="#platform">Agents</a></li>
+            <li><a href="#services">Business automation</a></li>
+            <li><a href="#services">Security-driven engineering</a></li>
+            <li><a href="#services">Integrations</a></li>
+            <li><a href="#services">Monitoring</a></li>
           </ul>
         </div>
         <div>
           <h4>Company</h4>
           <ul>
-            <li><a href="#how">How it works</a></li>
-            <li><a href="#customers">Customers</a></li>
+            <li><a href="#how">How we work</a></li>
+            <li><a href="#about">About Corble</a></li>
             <li><a href="#pricing">Pricing</a></li>
             <li><a href="#contact">Contact</a></li>
           </ul>
@@ -613,7 +588,8 @@ function Footer() {
           <h4>Contact</h4>
           <ul>
             <li><a href="mailto:hello@corble.net">hello@corble.net</a></li>
-            <li><a href="#contact">Start Free</a></li>
+            <li><a href="https://wa.me/201028160925" target="_blank" rel="noopener noreferrer">WhatsApp</a></li>
+            <li><a href="https://www.facebook.com/share/1Cer4m193o/" target="_blank" rel="noopener noreferrer">Facebook</a></li>
           </ul>
         </div>
       </div>
@@ -636,28 +612,28 @@ const jsonLd = {
       email: 'hello@corble.net',
       logo: 'https://corble.net/corble-logo-dark.png',
       description:
-        'Corble builds practical websites and automation systems that help real businesses work smarter.',
+        'Corble builds secure business automation using cybersecurity expertise and security-conscious engineering.',
     },
     {
       '@type': 'WebSite',
       '@id': 'https://corble.net/#website',
       url: 'https://corble.net/',
-      name: 'Corble | Decisions, not dashboards.',
+      name: 'Corble | Automate Smarter. Secure by Design.',
       description:
-        'Practical websites and automation systems that capture leads, answer customers, and run the busywork.',
+        'Intelligent business automation backed by cybersecurity expertise.',
       publisher: { '@id': 'https://corble.net/#org' },
       inLanguage: 'en',
     },
     {
       '@type': 'Service',
-      name: 'Business websites & automation systems',
+      name: 'Secure business automation',
       provider: { '@id': 'https://corble.net/#org' },
       areaServed: 'Worldwide',
-      serviceType: ['Business website development', 'Workflow automation', 'Lead capture automation', 'AI agents'],
+      serviceType: ['Workflow automation', 'Secure integrations', 'Security-driven engineering', 'AI-powered business processes'],
       offers: [
-        { '@type': 'Offer', name: 'Starter', price: 0, priceCurrency: 'USD', description: '1 automation workflow, website starter in your brand, WhatsApp lead capture.' },
-        { '@type': 'Offer', name: 'Pro', price: 49, priceCurrency: 'USD', description: 'Unlimited workflows, anomaly alerts, AI-drafted follow-ups, 40+ integrations.' },
-        { '@type': 'Offer', name: 'Business', description: 'Custom builds & agents, dedicated onboarding, SLA + monthly review.' },
+        { '@type': 'Offer', name: 'Starter', price: 8000, priceCurrency: 'EGP', description: 'One custom automation workflow with up to 3 integrations.' },
+        { '@type': 'Offer', name: 'Growth', price: 15000, priceCurrency: 'EGP', description: 'Up to 3 automation workflows with security review and monitoring.' },
+        { '@type': 'Offer', name: 'Business', price: 25000, priceCurrency: 'EGP', description: 'Up to 6 automation workflows with multiple integrations.' },
       ],
     },
     {
@@ -668,7 +644,7 @@ const jsonLd = {
           name: 'What exactly does Corble do?',
           acceptedAnswer: {
             '@type': 'Answer',
-            text: 'We build practical websites and automation systems — lead capture, follow-ups, booking handling, WhatsApp workflows, and reporting that pings anomalies. You get outcomes: fewer missed customers, less manual work.',
+            text: 'We build intelligent business automation backed by cybersecurity expertise, including workflow automation, secure integrations, and security-conscious engineering.',
           },
         },
         {
@@ -676,7 +652,7 @@ const jsonLd = {
           name: 'Do I need technical skills or another tool to learn?',
           acceptedAnswer: {
             '@type': 'Answer',
-            text: 'No. If you can describe the task in a sentence, Corble can run it. There is intentionally no dashboard full of charts to babysit — the system acts and reports when something needs you.',
+            text: 'We start by understanding your process, systems, data, and access needs, then recommend a practical automation approach.',
           },
         },
         {
@@ -684,7 +660,7 @@ const jsonLd = {
           name: 'How long until it actually saves me time?',
           acceptedAnswer: {
             '@type': 'Answer',
-            text: 'Most teams see the first automation live within a week and save hours per week within a month. Starter workflows are live in days.',
+            text: 'Timing depends on the scope, systems involved, access requirements, and testing needed. We confirm the delivery plan before work begins.',
           },
         },
         {
@@ -692,7 +668,7 @@ const jsonLd = {
           name: 'Will it work with the tools I already use?',
           acceptedAnswer: {
             '@type': 'Answer',
-            text: 'Corble connects with 40+ platforms including WhatsApp, Google Workspace, Meta, calendars, payments, and CRMs — and we build custom connectors when needed.',
+            text: 'We can work with existing CRMs, databases, APIs, communication tools, and business platforms where appropriate.',
           },
         },
         {
@@ -700,7 +676,7 @@ const jsonLd = {
           name: 'Is my data safe?',
           acceptedAnswer: {
             '@type': 'Answer',
-            text: 'Yes. Data is encrypted in transit and at rest, access is role-based, and we follow SOC 2 practices. You own your data — export or delete it anytime.',
+            text: 'Security requirements are considered during architecture, access control, data handling, integration review, monitoring, and documentation. Specific controls depend on the project.',
           },
         },
       ],

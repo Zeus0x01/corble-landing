@@ -5,29 +5,27 @@ import type { Metadata, Viewport } from 'next';
 
 const SITE_URL = 'https://corble.net';
 const DESCRIPTION =
-  'Corble builds practical websites and automation systems that help real businesses work smarter — results, not another tool to babysit.';
+  'Corble builds intelligent business automation backed by cybersecurity expertise, helping businesses streamline operations without overlooking security.';
 // Social previews truncate around ~125 characters, so shares get a shorter variant.
 const SOCIAL_DESCRIPTION =
-  'Corble builds practical websites and automation systems that help real businesses work smarter — results, not another tool.';
+  'Secure business automation powered by cybersecurity expertise.';
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: 'Corble | Decisions, not dashboards.',
+    default: 'Corble | Automate Smarter. Secure by Design.',
     template: '%s | Corble',
   },
   description: DESCRIPTION,
   keywords: [
     'business automation',
-    'automation agency',
+    'secure business automation',
     'workflow automation',
-    'WhatsApp automation',
-    'lead follow-up automation',
-    'AI agents for business',
-    'business websites',
-    'operations automation',
-    'lead capture',
-    'booking automation',
+    'security-driven engineering',
+    'secure workflow architecture',
+    'intelligent workflow engineering',
+    'reliable system integrations',
+    'security-conscious development',
   ],
   applicationName: 'Corble',
   authors: [{ name: 'Corble' }],
@@ -47,13 +45,13 @@ export const metadata: Metadata = {
     url: SITE_URL,
     siteName: 'Corble',
     locale: 'en_US',
-    title: 'Corble | Decisions, not dashboards.',
+    title: 'Corble | Automate Smarter. Secure by Design.',
     description: SOCIAL_DESCRIPTION,
-    images: [{ url: '/opengraph-image.png', width: 1200, height: 630, alt: 'Corble — Decisions, not dashboards. Practical websites & automation systems.' }],
+    images: [{ url: '/opengraph-image.png', width: 1200, height: 630, alt: 'Corble — Automate Smarter. Secure by Design.' }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Corble | Decisions, not dashboards.',
+    title: 'Corble | Automate Smarter. Secure by Design.',
     description: SOCIAL_DESCRIPTION,
     images: ['/opengraph-image.png'],
   },

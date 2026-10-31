@@ -485,7 +485,7 @@ h1, h2, h3 { letter-spacing: -0.05em; }
 .stars { color: var(--lime); letter-spacing: 3px; font-size: 0.85rem; }
 
 /* ---------- pricing ---------- */
-.plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; align-items: stretch; }
+.plans { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; align-items: stretch; }
 .plan {
   position: relative; padding: 30px 26px; border-radius: var(--radius);
   border: 1px solid var(--border); background: var(--surface);
@@ -506,6 +506,16 @@ h1, h2, h3 { letter-spacing: -0.05em; }
 .plan h3 { margin: 0; font-size: 1.05rem; }
 .price { font-size: 2.3rem; font-weight: 800; letter-spacing: -0.05em; }
 .price small { font-size: 0.85rem; color: var(--soft); font-weight: 550; letter-spacing: 0; }
+.price-usd { color: var(--soft); font-size: 0.78rem; min-height: 20px; }
+.pricing-note { margin: 22px auto 0; max-width: 780px; color: var(--soft); font-size: 0.78rem; text-align: center; }
+.maintenance-card { margin-top: 42px; padding: 26px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); display: flex; justify-content: space-between; gap: 24px; align-items: center; }
+.maintenance-card h3 { margin: 14px 0 4px; }
+.maintenance-card p { margin: 0; color: var(--muted); font-size: 0.88rem; }
+.maintenance-plans { display: grid; grid-template-columns: repeat(3, auto); gap: 12px; }
+.maintenance-plans span { min-width: 130px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-2); }
+.maintenance-plans b, .maintenance-plans strong, .maintenance-plans small { display: block; }
+.maintenance-plans strong { margin-top: 6px; color: var(--lime); }
+.maintenance-plans small { color: var(--soft); font-size: 0.75rem; }
 .plan-desc { color: var(--muted); font-size: 0.86rem; margin: 0 0 10px; }
 .plan ul { list-style: none; margin: 0 0 20px; padding: 0; display: grid; gap: 10px; flex: 1; }
 .plan li { display: flex; gap: 9px; align-items: start; color: var(--muted); font-size: 0.88rem; }
@@ -589,7 +599,7 @@ footer { border-top: 1px solid var(--border); background: var(--bg); }
   .stats { grid-template-columns: repeat(2, 1fr); }
   .showcase-stage { grid-template-columns: 1fr 1fr; }
   .testimonials { grid-template-columns: 1fr 1fr; }
-  .plans { grid-template-columns: 1fr; max-width: 480px; margin-inline: auto; }
+  .plans { grid-template-columns: repeat(2, 1fr); }
   .footer-main { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 860px) {
@@ -639,8 +649,12 @@ footer { border-top: 1px solid var(--border); background: var(--bg); }
   .showcase-stage { grid-template-columns: 1fr; }
   .scard { animation: none; }
   .testimonials { grid-template-columns: 1fr; }
+  .maintenance-card { align-items: stretch; flex-direction: column; }
+  .maintenance-plans { grid-template-columns: repeat(3, 1fr); }
   .form-row { grid-template-columns: 1fr; }
   .footer-main { grid-template-columns: 1fr; }
+  .plans { grid-template-columns: 1fr; max-width: 480px; margin-inline: auto; }
+  .maintenance-plans { grid-template-columns: 1fr; }
   .mock-cards { grid-template-columns: repeat(3, 1fr); gap: 7px; }
   .hero-ctas .btn { flex: 1 1 100%; }
 }
