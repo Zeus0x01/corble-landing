@@ -46,18 +46,56 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
 
   const [workspace, datasets, owners] = await Promise.all([
     db.leadWorkspaceState.findUnique({ where: { userId }, select: { activeDatasetId: true } }),
-    db.leadDataset.findMany({ orderBy: { updatedAt: 'desc' }, include: { fileAsset: { select: { name: true, mimeType: true, updatedAt: true } }, _count: { select: { leads: true } } } }),
+    db.leadDataset.findMany({
+      orderBy: { updatedAt: 'desc' },
+      include: {
+        fileAsset: { select: { name: true, mimeType: true, updatedAt: true } },
+        _count: { select: { leads: true } },
+      },
+    }),
     db.user.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
   ]);
+
   const activeDatasetId = workspace?.activeDatasetId ?? datasets[0]?.id ?? null;
+  const activeDataset = datasets.find((d) => d.id === activeDatasetId) ?? null;
+  const isPureDraft = activeDataset ? activeDataset._count.leads === 0 : false;
+
   const [leads, leadLinkCounts] = await Promise.all([
     db.lead.findMany({
-      where: { ...(activeDatasetId ? { datasetId: activeDatasetId } : {}), ...(query ? { OR: [{ name: { contains: query, mode: 'insensitive' } }, { leadCode: { contains: query, mode: 'insensitive' } }, { contactPerson: { contains: query, mode: 'insensitive' } }, { service: { contains: query, mode: 'insensitive' } }, { email: { contains: query, mode: 'insensitive' } }] } : {}) },
+      where: {
+        ...(activeDatasetId ? { datasetId: activeDatasetId } : {}),
+        ...(query
+          ? {
+              OR: [
+                { name: { contains: query, mode: 'insensitive' } },
+                { leadCode: { contains: query, mode: 'insensitive' } },
+                { contactPerson: { contains: query, mode: 'insensitive' } },
+                { service: { contains: query, mode: 'insensitive' } },
+                { email: { contains: query, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+      },
       orderBy: [{ nextFollowUp: { sort: 'asc', nulls: 'last' } }, { createdAt: 'desc' }],
-      include: { owner: { select: { id: true, name: true } }, dataset: { select: { fileAsset: { select: { name: true } } } }, fileLinks: { select: { id: true } }, projects: { select: { id: true, name: true } }, tasks: { select: { id: true, title: true } }, _count: { select: { projects: true } } },
+      include: {
+        owner: { select: { id: true, name: true } },
+        dataset: { select: { fileAsset: { select: { name: true } } } },
+        fileLinks: { select: { id: true } },
+        projects: { select: { id: true, name: true } },
+        tasks: { select: { id: true, title: true } },
+        _count: { select: { projects: true } },
+      },
     }),
-    db.fileLeadLink.groupBy({ by: ['leadId'], _count: { _all: true }, where: { kind: 'LEAD', ...(activeDatasetId ? { fileAsset: { leadDataset: { id: activeDatasetId } } } : {}) } }),
+    db.fileLeadLink.groupBy({
+      by: ['leadId'],
+      _count: { _all: true },
+      where: {
+        kind: 'LEAD',
+        ...(activeDatasetId ? { fileAsset: { leadDataset: { id: activeDatasetId } } } : {}),
+      },
+    }),
   ]);
+
   const filesByLead = new Map(leadLinkCounts.map((g) => [g.leadId, g._count._all] as const));
 
   const rows: DtRow[] = leads.map((l) => ({
@@ -72,21 +110,38 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       owner: l.owner?.name ?? '',
     },
     cells: [
-    <><a href={`/workspace/leads?lead=${encodeURIComponent(l.leadCode)}`} style={{ color: 'var(--purple)' }}>{l.leadCode}</a><LeadCodeCopy code={l.leadCode} /></>,
-    <>
-        <strong>{l.name}</strong>
-      {l.dataset?.fileAsset.name ? <div className="itemsub" title={`Imported from ${l.dataset.fileAsset.name}`}>File: {l.dataset.fileAsset.name}</div> : null}
-      {l.contactPerson && l.contactPerson !== l.phone && l.contactPerson !== l.email ? <div className="itemsub">{l.contactPerson}</div> : null}
+      <>
+        <a href={`/workspace/leads?lead=${encodeURIComponent(l.leadCode)}`} style={{ color: 'var(--purple)' }}>
+          {l.leadCode}
+        </a>
+        <LeadCodeCopy code={l.leadCode} />
       </>,
-    <>
-      {l.email ? <div>{l.email}</div> : null}
-      {l.phone ? <div className="itemsub">{l.phone}</div> : null}
-      {!l.email && !l.phone ? '—' : null}
-    </>,
-    l.industry || l.service,
-    [l.city, l.country].filter(Boolean).join(', ') || '—',
-    l.website ? <a href={l.website} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--purple)' }}>{l.website} ↗</a> : '—',
-    l.source,
+      <>
+        <strong>{l.name}</strong>
+        {l.dataset?.fileAsset.name ? (
+          <div className="itemsub" title={`Imported from ${l.dataset.fileAsset.name}`}>
+            File: {l.dataset.fileAsset.name}
+          </div>
+        ) : null}
+        {l.contactPerson && l.contactPerson !== l.phone && l.contactPerson !== l.email ? (
+          <div className="itemsub">{l.contactPerson}</div>
+        ) : null}
+      </>,
+      <>
+        {l.email ? <div>{l.email}</div> : null}
+        {l.phone ? <div className="itemsub">{l.phone}</div> : null}
+        {!l.email && !l.phone ? '—' : null}
+      </>,
+      l.industry || l.service,
+      [l.city, l.country].filter(Boolean).join(', ') || '—',
+      l.website ? (
+        <a href={l.website} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--purple)' }}>
+          {l.website} ↗
+        </a>
+      ) : (
+        '—'
+      ),
+      l.source,
       <InlineSelect
         key="st"
         value={l.status}
@@ -99,9 +154,15 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       formatMoney(l.estValue),
       formatDate(l.nextFollowUp),
       l.owner?.name ?? '—',
-        <span key="acts" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      <span key="acts" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         {(filesByLead.get(l.id) ?? 0) > 0 ? (
-          <a className="btn sq" href={`/workspace/files?tab=lead&id=${l.id}`} title={`Open ${(filesByLead.get(l.id) ?? 0)} linked file(s)`}>▤ {filesByLead.get(l.id)}</a>
+          <a
+            className="btn sq"
+            href={`/workspace/files?tab=lead&id=${l.id}`}
+            title={`Open ${(filesByLead.get(l.id) ?? 0)} linked file(s)`}
+          >
+            ▤ {filesByLead.get(l.id)}
+          </a>
         ) : null}
         {l.status === 'WON' && l._count.projects === 0 && (
           <ConfirmAction
@@ -111,19 +172,61 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
             confirmText={`Create a project from “${l.name}”?`}
             className="btn sq"
             title="Convert to project"
-          >→</ConfirmAction>
+          >
+            →
+          </ConfirmAction>
         )}
         <ModalForm
           title="Edit lead"
           trigger="✎"
           triggerClass="btn sq"
           action={updateLead}
-          fields={leadFields(owners, { id: l.id, name: l.name, contactPerson: l.contactPerson, email: l.email, phone: l.phone, website: l.website, industry: l.industry, city: l.city, country: l.country, notes: l.notes, service: l.service, source: l.source, status: l.status, estValue: l.estValue, nextFollowUp: l.nextFollowUp, ownerId: l.ownerId })}
+          fields={leadFields(owners, {
+            id: l.id,
+            name: l.name,
+            contactPerson: l.contactPerson,
+            email: l.email,
+            phone: l.phone,
+            website: l.website,
+            industry: l.industry,
+            city: l.city,
+            country: l.country,
+            notes: l.notes,
+            service: l.service,
+            source: l.source,
+            status: l.status,
+            estValue: l.estValue,
+            nextFollowUp: l.nextFollowUp,
+            ownerId: l.ownerId,
+          })}
         />
         <ConfirmAction action={deleteLead} payload={l.id} label="Delete lead" />
       </span>,
     ],
   }));
+
+  // Always the same fixed columns — never change based on uploaded file
+  const FIXED_COLUMNS = [
+    { key: 'leadCode', label: 'Lead ID' },
+    { key: 'name', label: 'Company / Contact' },
+    { label: 'Email / Phone' },
+    { label: 'Category / Industry' },
+    { label: 'City / Country' },
+    { label: 'Website' },
+    { key: 'source', label: 'Source' },
+    { key: 'status', label: 'Status' },
+    { key: 'value', label: 'Est. value' },
+    { key: 'followup', label: 'Follow-up' },
+    { key: 'owner', label: 'Owner' },
+    { label: 'Actions' },
+  ];
+
+  let emptyMessage = 'No leads yet — add your first one or upload a CSV.';
+  if (query) {
+    emptyMessage = 'No leads match your search.';
+  } else if (isPureDraft && activeDataset) {
+    emptyMessage = `“${activeDataset.fileAsset.name}” is still a draft. Use the Import button above to bring its rows into the table. Columns stay the same.`;
+  }
 
   return (
     <>
@@ -133,23 +236,48 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
           <div className="sub">Add, edit, schedule follow-ups; convert a Won lead into a real project.</div>
         </div>
 
-        {selectedCode ? (() => {
-          const selected = leads.find((l) => l.leadCode.toLowerCase() === selectedCode.toLowerCase());
-          return selected ? (
-            <div className="panel" style={{ marginBottom: 14 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                <div><h3 style={{ margin: 0 }}>{selected.name}</h3><div className="sub">{selected.leadCode} · {selected.source}</div></div>
-                <LeadCodeCopy code={selected.leadCode} />
-              </div>
-              <div className="sub" style={{ marginTop: 10 }}>
-                {[selected.email, selected.phone, selected.website, selected.industry, selected.city, selected.country].filter(Boolean).join(' · ') || 'No additional contact information'}
-              </div>
-              <div className="sub" style={{ marginTop: 8 }}>
-                Projects: {selected.projects.length ? selected.projects.map((p) => <a key={p.id} href="/workspace/projects" style={{ color: 'var(--purple)', marginLeft: 6 }}>{p.name}</a>) : 'none'} · Tasks: {selected.tasks.length ? selected.tasks.map((t) => <a key={t.id} href="/workspace/tasks" style={{ color: 'var(--purple)', marginLeft: 6 }}>{t.title}</a>) : 'none'}
-              </div>
-            </div>
-          ) : null;
-        })() : null}
+        {selectedCode
+          ? (() => {
+              const selected = leads.find((l) => l.leadCode.toLowerCase() === selectedCode.toLowerCase());
+              return selected ? (
+                <div className="panel" style={{ marginBottom: 14 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                    <div>
+                      <h3 style={{ margin: 0 }}>{selected.name}</h3>
+                      <div className="sub">
+                        {selected.leadCode} · {selected.source}
+                      </div>
+                    </div>
+                    <LeadCodeCopy code={selected.leadCode} />
+                  </div>
+                  <div className="sub" style={{ marginTop: 10 }}>
+                    {[selected.email, selected.phone, selected.website, selected.industry, selected.city, selected.country]
+                      .filter(Boolean)
+                      .join(' · ') || 'No additional contact information'}
+                  </div>
+                  <div className="sub" style={{ marginTop: 8 }}>
+                    Projects:{' '}
+                    {selected.projects.length
+                      ? selected.projects.map((p) => (
+                          <a key={p.id} href="/workspace/projects" style={{ color: 'var(--purple)', marginLeft: 6 }}>
+                            {p.name}
+                          </a>
+                        ))
+                      : 'none'}{' '}
+                    · Tasks:{' '}
+                    {selected.tasks.length
+                      ? selected.tasks.map((t) => (
+                          <a key={t.id} href="/workspace/tasks" style={{ color: 'var(--purple)', marginLeft: 6 }}>
+                            {t.title}
+                          </a>
+                        ))
+                      : 'none'}
+                  </div>
+                </div>
+              ) : null;
+            })()
+          : null}
+
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <LeadCsvImport />
           <ModalForm
@@ -161,33 +289,22 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
         </div>
       </div>
 
-      <LeadFileBar datasets={datasets.map((dataset) => ({
-        id: dataset.id,
-        fileName: dataset.fileAsset.name,
-        mimeType: dataset.fileAsset.mimeType,
-        leadCount: dataset._count.leads,
-        modifiedAt: dataset.fileAsset.updatedAt.toISOString(),
-        active: dataset.id === activeDatasetId,
-      }))} />
+      <LeadFileBar
+        datasets={datasets.map((dataset) => ({
+          id: dataset.id,
+          fileName: dataset.fileAsset.name,
+          mimeType: dataset.fileAsset.mimeType,
+          leadCount: dataset._count.leads,
+          modifiedAt: dataset.fileAsset.updatedAt.toISOString(),
+          active: dataset.id === activeDatasetId,
+        }))}
+      />
 
       <DataTable
-        columns={[
-          { key: 'leadCode', label: 'Lead ID' },
-          { key: 'name', label: 'Company / Contact' },
-          { label: 'Email / Phone' },
-          { label: 'Category / Industry' },
-          { label: 'City / Country' },
-          { label: 'Website' },
-          { key: 'source', label: 'Source' },
-          { key: 'status', label: 'Status' },
-          { key: 'value', label: 'Est. value' },
-          { key: 'followup', label: 'Follow-up' },
-          { key: 'owner', label: 'Owner' },
-          { label: 'Actions' },
-        ]}
+        columns={FIXED_COLUMNS}
         rows={rows}
         bulk={[{ label: 'Delete selected', action: bulkDeleteLeads, confirm: 'Delete all selected leads?', danger: true }]}
-        empty={query ? 'No leads match your search.' : 'No leads yet — add your first one.'}
+        empty={emptyMessage}
       />
     </>
   );
