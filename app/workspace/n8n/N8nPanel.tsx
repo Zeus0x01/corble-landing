@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useToast } from '@/app/workspace/Shell';
-import { exportN8nWorkflow, importN8nWorkflow } from '@/lib/actions';
+import { exportN8nWorkflow } from '@/lib/actions';
 
 type WorkflowSummary = {
   id: string;
@@ -14,9 +14,7 @@ type WorkflowSummary = {
   nodeCount: number | null;
 };
 
-type Asset = { id: string; name: string; size: number; at: string };
-
-export default function N8nPanel({ admin, configured, missing, assets }: { admin: boolean; configured: boolean; missing: string; assets: Asset[] }) {
+export default function N8nPanel({ admin, configured, missing }: { admin: boolean; configured: boolean; missing: string }) {
   const toast = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -25,8 +23,6 @@ export default function N8nPanel({ admin, configured, missing, assets }: { admin
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [viewing, setViewing] = useState<{ name: string; json: string } | null>(null);
-  const [importAsset, setImportAsset] = useState<string>('');
-  const [importName, setImportName] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
   const requestedWorkflow = searchParams.get('workflow');
 
@@ -96,23 +92,6 @@ export default function N8nPanel({ admin, configured, missing, assets }: { admin
     if (res.ok) router.refresh();
   }
 
-  async function importWf() {
-    if (!importAsset) {
-      toast('Pick a JSON file from the library first.', 'err');
-      return;
-    }
-    setBusy('import');
-    const res = await importN8nWorkflow({ assetId: importAsset, ...(importName.trim() ? { name: importName.trim() } : {}) });
-    setBusy(null);
-    toast(res.error ?? res.message ?? 'Imported.', res.ok ? 'ok' : 'err');
-    if (res.ok) {
-      setImportAsset('');
-      setImportName('');
-      setWorkflows(null);
-      router.refresh();
-    }
-  }
-
   if (!admin) {
     return <div className="tablewrap"><div className="empty">n8n workflow management is admin-only.</div></div>;
   }
@@ -174,41 +153,6 @@ export default function N8nPanel({ admin, configured, missing, assets }: { admin
           </table>
         </div>
       ) : null}
-
-      <div className="grid" style={{ marginTop: 4 }}>
-        <section className="card wide">
-          <div className="panelhead">
-            <h2>Import a workflow JSON from the Files library</h2>
-            <span className="quiet">exports land in Files; pick one and push it to n8n as a new workflow</span>
-          </div>
-          <div className="formgrid">
-            <label className="field">
-              JSON file (from Files)
-              <select value={importAsset} onChange={(e) => setImportAsset(e.target.value)}>
-                <option value="">— choose file —</option>
-                {assets.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name} ({Math.max(1, Math.round(a.size / 1024))} KB)
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              Optional new name
-              <input value={importName} onChange={(e) => setImportName(e.target.value)} placeholder="Leave empty to use the original" />
-            </label>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
-            <button className="btn primary" onClick={importWf} disabled={!configured || busy !== null || !importAsset}>
-              {busy === 'import' ? 'Importing…' : 'Import to n8n'}
-            </button>
-          </div>
-          {assets.length === 0 ? (
-            <div className="sub" style={{ marginTop: 8 }}>No JSON files in the library yet — export a workflow above, or upload one on the Files page.</div>
-          ) : null}
-          {!configured ? <div className="sub" style={{ marginTop: 8 }}>Import is unavailable until the n8n connection is configured.</div> : null}
-        </section>
-      </div>
 
       {viewing ? (
         <div className="modalbg" onClick={(e) => { if (e.target === e.currentTarget) setViewing(null); }}>

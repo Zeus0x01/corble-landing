@@ -99,18 +99,3 @@ export async function getWorkflow(id: string): Promise<{ summary: N8nWorkflowSum
   const w = await n8nJson<N8nWorkflowRaw>(`/workflows/${encodeURIComponent(id)}`);
   return { summary: summarize(w), json: w };
 }
-
-/** Import: create a fresh workflow in n8n from JSON. n8n sees an id in the payload → strip it. */
-export async function createWorkflow(rawJson: string, forcedName?: string): Promise<{ id: string; name: string }> {
-  const parsed = JSON.parse(rawJson) as Record<string, unknown>;
-  const nodes = parsed.nodes;
-  if (!Array.isArray(nodes) || nodes.length === 0) throw new Error('INVALID_WORKFLOW (needs a nodes array)');
-  const body = {
-    name: String(forcedName ?? parsed.name ?? 'Imported workflow').slice(0, 120),
-    nodes,
-    connections: parsed.connections ?? {},
-    settings: parsed.settings ?? {},
-  };
-  const created = await n8nJson<{ id: string | number; name?: string }>('/workflows', { method: 'POST', body: JSON.stringify(body) });
-  return { id: String(created.id), name: created.name ?? String(body.name) };
-}

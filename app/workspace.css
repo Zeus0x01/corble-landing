@@ -228,6 +228,17 @@ input:focus, select:focus, textarea:focus { border-color: var(--purple); box-sha
 .team-head-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .team-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 14px; }
 .team-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; min-width: 250px; }
+.settings-form { display: grid; gap: 20px; }
+.settings-section { display: grid; gap: 14px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+.settings-section:last-of-type { border-bottom: 0; padding-bottom: 0; }
+.settings-section-title { font-size: 13px; font-weight: 800; letter-spacing: .04em; }
+.settings-section-copy { color: var(--muted); font-size: 12px; margin-top: 3px; }
+.settings-appearance { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.appearance-control { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.theme-preview { padding: 8px 11px; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; font-weight: 750; }
+.theme-preview.light { background: #f4f6fb; color: #172033; }
+.theme-preview.dark { background: #0b101b; color: var(--text); }
+.settings-footer { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; }
 
 .toastwrap { position: fixed; right: 18px; bottom: 18px; z-index: 90; display: grid; gap: 9px; }
 .toast-item { background: var(--card); border: 1px solid var(--line); color: var(--text); border-radius: 12px; padding: 12px 16px; font-size: 13px; box-shadow: var(--shadow); animation: toastin 0.25s ease; max-width: 320px; }
