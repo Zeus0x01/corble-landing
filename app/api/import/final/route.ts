@@ -66,6 +66,22 @@ async function postImport(req: NextRequest) {
   const dupEmails = new Set(existing.map((l) => l.email).filter(Boolean).map((v) => normalized(v as string)));
   const dupPhones = new Set(existing.map((l) => l.phone).filter(Boolean).map((v) => normalized(v as string)));
 
+  if (bodyJson.mode === 'draft') {
+    const filename = (bodyJson.filename || 'leads.csv').slice(0, 160);
+    const { storageKey, storage } = await saveUpload(new File([csv], filename, { type: 'text/csv' }));
+    const asset = await db.fileAsset.create({
+      data: { name: filename, size: Buffer.byteLength(csv, 'utf8'), mimeType: /\.(xlsx|xls)$/i.test(filename) ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv', storageKey, storage, uploadedById: userId },
+      select: { id: true },
+    });
+    const dataset = await db.leadDataset.create({ data: { fileAssetId: asset.id, ownerId: userId }, select: { id: true } });
+    await db.leadWorkspaceState.upsert({
+      where: { userId },
+      create: { userId, activeDatasetId: dataset.id },
+      update: { activeDatasetId: dataset.id },
+    });
+    return Response.json({ ok: true, assetId: asset.id, datasetId: dataset.id });
+  }
+
   if (bodyJson.mode !== 'commit') {
     return Response.json({
       ok: true,
@@ -79,23 +95,31 @@ async function postImport(req: NextRequest) {
 
   let assetId = bodyJson.assetId;
   if (assetId) {
-    const existingDataset = await db.leadDataset.findUnique({ where: { fileAssetId: assetId }, select: { id: true } });
+    const existingDataset = await db.leadDataset.findUnique({ where: { fileAssetId: assetId }, select: { id: true, _count: { select: { leads: true } } } });
     if (existingDataset) {
-      const datasetLeads = await db.lead.findMany({ where: { datasetId: existingDataset.id }, select: { id: true } });
-      const linked = await db.fileLeadLink.findMany({ where: { fileAssetId: assetId, kind: 'LEAD' }, select: { leadId: true } });
-      const linkedIds = new Set(linked.map((link) => link.leadId));
-      const missing = datasetLeads.filter((lead) => !linkedIds.has(lead.id));
-      if (missing.length) {
-        await db.fileLeadLink.createMany({
-          data: missing.map((lead) => ({ kind: 'LEAD', leadId: lead.id, fileAssetId: assetId! })),
+      if (existingDataset._count.leads === 0) {
+        await db.leadWorkspaceState.upsert({
+          where: { userId },
+          create: { userId, activeDatasetId: existingDataset.id },
+          update: { activeDatasetId: existingDataset.id },
         });
+      } else {
+        const datasetLeads = await db.lead.findMany({ where: { datasetId: existingDataset.id }, select: { id: true } });
+        const linked = await db.fileLeadLink.findMany({ where: { fileAssetId: assetId, kind: 'LEAD' }, select: { leadId: true } });
+        const linkedIds = new Set(linked.map((link) => link.leadId));
+        const missing = datasetLeads.filter((lead) => !linkedIds.has(lead.id));
+        if (missing.length) {
+          await db.fileLeadLink.createMany({
+            data: missing.map((lead) => ({ kind: 'LEAD', leadId: lead.id, fileAssetId: assetId! })),
+          });
+        }
+        await db.leadWorkspaceState.upsert({
+          where: { userId },
+          create: { userId, activeDatasetId: existingDataset.id },
+          update: { activeDatasetId: existingDataset.id },
+        });
+        return Response.json({ ok: true, created: 0, duplicates: mapped.length, invalid: invalid.length, datasetId: existingDataset.id });
       }
-      await db.leadWorkspaceState.upsert({
-        where: { userId },
-        create: { userId, activeDatasetId: existingDataset.id },
-        update: { activeDatasetId: existingDataset.id },
-      });
-      return Response.json({ ok: true, created: 0, duplicates: mapped.length, invalid: invalid.length, datasetId: existingDataset.id });
     }
   } else {
     const filename = (bodyJson.filename || 'leads.csv').slice(0, 160);
@@ -137,7 +161,8 @@ async function postImport(req: NextRequest) {
   }
   const CHUNK = 500;
   const datasetId = await db.$transaction(async (tx) => {
-    const dataset = await tx.leadDataset.create({ data: { fileAssetId: assetId!, ownerId: userId }, select: { id: true } });
+    const dataset = await tx.leadDataset.findUnique({ where: { fileAssetId: assetId! }, select: { id: true } })
+      ?? await tx.leadDataset.create({ data: { fileAssetId: assetId!, ownerId: userId }, select: { id: true } });
     const codes = await allocateLeadCodes(tx, toCreateData.length);
     toCreateData.forEach((row, index) => { row.leadCode = codes[index]; });
     for (let i = 0; i < toCreateData.length; i += CHUNK) {

@@ -23,12 +23,13 @@ export default function LeadCsvImport() {
   const [csv, setCsv] = useState('');
   const [preview, setPreview] = useState<PreviewRes | null>(null);
   const [busy, setBusy] = useState(false);
+  const [assetId, setAssetId] = useState('');
 
-  async function post(mode: 'preview' | 'commit'): Promise<PreviewRes & CommitRes> {
+  async function post(mode: 'draft' | 'preview' | 'commit', values?: { filename?: string; csv?: string }): Promise<PreviewRes & CommitRes & { assetId?: string }> {
     const res = await fetch('/api/import/final', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ mode, filename, csv }),
+      body: JSON.stringify({ mode, filename: values?.filename ?? filename, csv: values?.csv ?? csv, assetId: assetId || undefined }),
     });
     const text = await res.text();
     let payload: Partial<PreviewRes & CommitRes> = {};
@@ -41,6 +42,10 @@ export default function LeadCsvImport() {
     }
     if (!res.ok) throw new Error(payload.error ?? `Import failed (HTTP ${res.status}).`);
     return payload as PreviewRes & CommitRes;
+  }
+
+  async function postDraft(nextFilename: string, nextCsv: string) {
+    return post('draft', { filename: nextFilename, csv: nextCsv });
   }
 
   async function runImport(mode: 'preview' | 'commit') {
@@ -63,14 +68,26 @@ export default function LeadCsvImport() {
       return;
     }
     setFilename(f.name);
+    let convertedCsv: string;
     if (/\.(xlsx|xls)$/i.test(f.name)) {
       const workbook = XLSX.read(await f.arrayBuffer(), { type: 'array' });
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-      setCsv(XLSX.utils.sheet_to_csv(firstSheet));
+      convertedCsv = XLSX.utils.sheet_to_csv(firstSheet);
     } else {
-      setCsv(await f.text());
+      convertedCsv = await f.text();
     }
+    setCsv(convertedCsv);
     setPreview(null);
+    setBusy(true);
+    try {
+      const result = await postDraft(f.name, convertedCsv);
+      setAssetId(result.assetId ?? '');
+      router.refresh();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Could not save draft.', 'err');
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
