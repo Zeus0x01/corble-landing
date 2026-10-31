@@ -127,6 +127,12 @@ enum FileLinkKind {
   INCOMING
 }
 
+enum WebhookDeliveryStatus {
+  RECEIVED
+  FAILED
+  DUPLICATE
+}
+
 model FileLeadLink {
   id             String        @id @default(cuid())
   kind           FileLinkKind
@@ -210,6 +216,9 @@ model User {
   incomingReviewed IncomingLead[]       @relation("IncomingReviewer")
   researchUpdates  LeadResearchUpdate[] @relation("ResearchAuthor")
   importsBy        LeadImportBatch[]    @relation("ImportBy")
+  leadWorkspace    LeadWorkspaceState?
+  leadDatasets     LeadDataset[]        @relation("LeadDatasetOwner")
+  webhooksOwned    Webhook[]            @relation("WebhookOwner")
 }
 
 model Lead {
@@ -231,6 +240,8 @@ model Lead {
   nextFollowUp  DateTime?
   ownerId       String?
   owner         User?      @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  datasetId     String?
+  dataset       LeadDataset? @relation("DatasetLeads", fields: [datasetId], references: [id], onDelete: SetNull)
   projects      Project[]
   tasks         Task[]
   fromIncoming  IncomingLead[] @relation("IncomingFinal")
@@ -240,6 +251,30 @@ model Lead {
 
   @@index([status])
   @@index([nextFollowUp])
+  @@index([datasetId])
+}
+
+model LeadDataset {
+  id            String     @id @default(cuid())
+  fileAssetId   String     @unique
+  fileAsset     FileAsset  @relation("LeadDatasetFile", fields: [fileAssetId], references: [id], onDelete: Cascade)
+  ownerId       String?
+  owner         User?      @relation("LeadDatasetOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  leads         Lead[]     @relation("DatasetLeads")
+  workspaceStates LeadWorkspaceState[]
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([ownerId])
+}
+
+model LeadWorkspaceState {
+  id                String      @id @default(cuid())
+  userId            String      @unique
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeDatasetId   String?
+  activeDataset     LeadDataset? @relation(fields: [activeDatasetId], references: [id], onDelete: SetNull)
+  updatedAt         DateTime    @updatedAt
 }
 
 model Project {
@@ -687,9 +722,49 @@ model FileAsset {
   uploadedBy   User?                @relation("FileUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
   versions     DeliverableVersion[] @relation("VersionFile")
   leadLinks    FileLeadLink[]       @relation("FileLeadLinks")
+  leadDataset  LeadDataset?         @relation("LeadDatasetFile")
+  webhookId    String?
+  webhook      Webhook?              @relation("WebhookFiles", fields: [webhookId], references: [id], onDelete: SetNull)
+  webhookDeliveries WebhookDelivery[]
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
 
   @@index([projectId])
   @@index([taskId])
+  @@index([webhookId])
+}
+
+model Webhook {
+  id              String       @id @default(cuid())
+  name            String
+  description     String?
+  secretHash      String       @unique
+  enabled         Boolean      @default(true)
+  ownerId         String?
+  owner           User?        @relation("WebhookOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  lastTriggeredAt DateTime?
+  files           FileAsset[]  @relation("WebhookFiles")
+  deliveries      WebhookDelivery[]
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([ownerId])
+  @@index([enabled])
+}
+
+model WebhookDelivery {
+  id             String                @id @default(cuid())
+  webhookId      String
+  webhook        Webhook               @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  fileAssetId    String?
+  fileAsset      FileAsset?            @relation(fields: [fileAssetId], references: [id], onDelete: SetNull)
+  filename       String?
+  size           Int?
+  status         WebhookDeliveryStatus
+  idempotencyKey String
+  error          String?
+  receivedAt     DateTime              @default(now())
+
+  @@unique([webhookId, idempotencyKey])
+  @@index([webhookId, receivedAt])
 }

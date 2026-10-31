@@ -29,7 +29,7 @@ export default function FileLeadImport({ assetId, fileName }: { assetId: string;
         body: JSON.stringify({ assetId, filename: fileName, mode }),
       });
       const text = await res.text();
-      const data = (text ? JSON.parse(text) : {}) as Preview & { created?: number; duplicates?: number; invalid?: number };
+      const data = (text ? JSON.parse(text) : {}) as Preview & { created?: number; duplicates?: number; invalid?: number; datasetId?: string };
       if (!res.ok || !data.ok) throw new Error(data.error ?? `Import failed (HTTP ${res.status}).`);
       if (mode === 'preview') {
         setPreview(data);
@@ -37,7 +37,7 @@ export default function FileLeadImport({ assetId, fileName }: { assetId: string;
       } else {
         toast(`Imported ${data.created ?? 0} leads · ${data.duplicates ?? 0} duplicates skipped.`, 'ok');
         setPreview(null);
-        router.refresh();
+        router.push('/workspace/leads');
       }
     } catch (error) {
       toast(error instanceof Error ? error.message : 'Import failed.', 'err');
@@ -48,7 +48,7 @@ export default function FileLeadImport({ assetId, fileName }: { assetId: string;
 
   return (
     <>
-      <button className="btn sq" onClick={() => run('preview')} disabled={busy} title="Preview this CSV for Final Leads">
+      <button className="btn sq" onClick={() => run('preview')} disabled={busy} title="Preview this CSV or Excel file for Final Leads">
         {busy && !preview ? '…' : '⇧ Final Leads'}
       </button>
       {preview ? (
@@ -56,7 +56,7 @@ export default function FileLeadImport({ assetId, fileName }: { assetId: string;
           <div className="card modal" role="dialog" aria-modal="true" aria-label={`Import ${fileName} to Final Leads`}>
             <div className="panelhead">
               <div>
-                <h2>Import CSV to Final Leads</h2>
+                <h2>Import file to Final Leads</h2>
                 <div className="sub">{fileName}</div>
               </div>
               <button className="btn sq" onClick={() => setPreview(null)} aria-label="Close import preview">✕</button>

@@ -8,6 +8,8 @@ import DataTable, { type DtRow } from '@/components/DataTable';
 import LeadCsvImport from './LeadCsvImport';
 import type { FieldSpec } from '@/lib/validators';
 import LeadCodeCopy from './LeadCodeCopy';
+import LeadFileBar from './LeadFileBar';
+import { auth } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,15 +41,22 @@ function leadFields(owners: { id: string; name: string }[], edit?: { id: string;
 export default async function LeadsPage({ searchParams }: { searchParams: Promise<{ q?: string; lead?: string }> }) {
   const { q, lead: selectedCode } = await searchParams;
   const query = (q ?? '').trim();
+  const session = await auth();
+  const userId = session!.user.id;
 
-  const [leads, owners, leadLinkCounts] = await Promise.all([
+  const [workspace, datasets, owners] = await Promise.all([
+    db.leadWorkspaceState.findUnique({ where: { userId }, select: { activeDatasetId: true } }),
+    db.leadDataset.findMany({ orderBy: { updatedAt: 'desc' }, include: { fileAsset: { select: { name: true, mimeType: true, updatedAt: true } }, _count: { select: { leads: true } } } }),
+    db.user.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+  ]);
+  const activeDatasetId = workspace?.activeDatasetId ?? datasets[0]?.id ?? null;
+  const [leads, leadLinkCounts] = await Promise.all([
     db.lead.findMany({
-      where: query ? { OR: [{ name: { contains: query, mode: 'insensitive' } }, { leadCode: { contains: query, mode: 'insensitive' } }, { contactPerson: { contains: query, mode: 'insensitive' } }, { service: { contains: query, mode: 'insensitive' } }, { email: { contains: query, mode: 'insensitive' } }] } : {},
+      where: { ...(activeDatasetId ? { datasetId: activeDatasetId } : {}), ...(query ? { OR: [{ name: { contains: query, mode: 'insensitive' } }, { leadCode: { contains: query, mode: 'insensitive' } }, { contactPerson: { contains: query, mode: 'insensitive' } }, { service: { contains: query, mode: 'insensitive' } }, { email: { contains: query, mode: 'insensitive' } }] } : {}) },
       orderBy: [{ nextFollowUp: { sort: 'asc', nulls: 'last' } }, { createdAt: 'desc' }],
       include: { owner: { select: { id: true, name: true } }, fileLinks: { select: { id: true } }, projects: { select: { id: true, name: true } }, tasks: { select: { id: true, title: true } }, _count: { select: { projects: true } } },
     }),
-    db.user.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
-    db.fileLeadLink.groupBy({ by: ['leadId'], _count: { _all: true }, where: { kind: 'LEAD' } }),
+    db.fileLeadLink.groupBy({ by: ['leadId'], _count: { _all: true }, where: { kind: 'LEAD', ...(activeDatasetId ? { fileAsset: { leadDataset: { id: activeDatasetId } } } : {}) } }),
   ]);
   const filesByLead = new Map(leadLinkCounts.map((g) => [g.leadId, g._count._all] as const));
 
@@ -150,6 +159,15 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
           />
         </div>
       </div>
+
+      <LeadFileBar datasets={datasets.map((dataset) => ({
+        id: dataset.id,
+        fileName: dataset.fileAsset.name,
+        mimeType: dataset.fileAsset.mimeType,
+        leadCount: dataset._count.leads,
+        modifiedAt: dataset.fileAsset.updatedAt.toISOString(),
+        active: dataset.id === activeDatasetId,
+      }))} />
 
       <DataTable
         columns={[

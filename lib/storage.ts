@@ -81,12 +81,29 @@ export async function readStoredText(storageKey: string, storage: string, fallba
     const buf = await readLocalUpload(storageKey);
     return buf ? buf.toString('utf8') : null;
   }
+
   try {
     if (hasS3()) {
       const signed = await s3Client().sign(new Request(s3ObjectUrl(storageKey)), { aws: { signQuery: true } });
       const res = await fetch(signed.url, { cache: 'no-store' });
       if (!res.ok) return null;
       return await res.text();
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+export async function readStoredBuffer(storageKey: string, storage: string): Promise<Buffer | null> {
+  if (storage === 'local') return readLocalUpload(storageKey);
+  try {
+    if (hasS3()) {
+      const signed = await s3Client().sign(new Request(s3ObjectUrl(storageKey)), { aws: { signQuery: true } });
+      const res = await fetch(signed.url, { cache: 'no-store' });
+      if (!res.ok) return null;
+      return Buffer.from(await res.arrayBuffer());
     }
   } catch {
     return null;

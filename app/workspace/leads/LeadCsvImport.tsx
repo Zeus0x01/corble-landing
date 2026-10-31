@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/app/workspace/Shell';
+import * as XLSX from 'xlsx';
 
 type PreviewRes = {
   ok: boolean;
@@ -58,11 +59,17 @@ export default function LeadCsvImport() {
     const f = files?.[0];
     if (!f) return;
     if (f.size > 2_000_000) {
-      toast('File too large — CSV must be smaller than 2MB.', 'err');
+      toast('File too large — CSV and Excel files must be smaller than 2MB.', 'err');
       return;
     }
     setFilename(f.name);
-    setCsv(await f.text());
+    if (/\.(xlsx|xls)$/i.test(f.name)) {
+      const workbook = XLSX.read(await f.arrayBuffer(), { type: 'array' });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      setCsv(XLSX.utils.sheet_to_csv(firstSheet));
+    } else {
+      setCsv(await f.text());
+    }
     setPreview(null);
   }
 
@@ -71,10 +78,10 @@ export default function LeadCsvImport() {
       {preview === null ? (
         <>
           <label className="btn" style={{ cursor: 'pointer' }}>
-            ⇪ Import CSV
+            ⇪ Import CSV / Excel
             <input
               type="file"
-              accept=".csv,text/csv"
+              accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
               style={{ display: 'none' }}
               onChange={async (e) => {
                 await pick(e.target.files);

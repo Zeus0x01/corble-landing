@@ -158,6 +158,7 @@ export async function createLead(raw: unknown): Promise<ActionResult> {
   try {
     const u = await requireUser();
     const input = leadSchema.parse(raw);
+    const workspace = await db.leadWorkspaceState.findUnique({ where: { userId: u.id }, select: { activeDatasetId: true } });
     const lead = await db.$transaction(async (tx) => tx.lead.create({
       data: {
         leadCode: await allocateLeadCode(tx),
@@ -176,6 +177,7 @@ export async function createLead(raw: unknown): Promise<ActionResult> {
         estValue: input.estValue,
         nextFollowUp: input.nextFollowUp,
         ownerId: input.ownerId ?? null,
+        datasetId: workspace?.activeDatasetId ?? null,
       },
     }));
     await logActivity(u.id, 'Lead created', `${lead.name} Â· ${lead.service}`);

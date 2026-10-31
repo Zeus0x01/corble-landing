@@ -7,6 +7,7 @@ import FileUploader from '@/components/FileUploader';
 import ConfirmAction from '@/components/ConfirmAction';
 import MoveAsset, { type Company, type Link } from '@/components/MoveAsset';
 import FileLeadImport from './FileLeadImport';
+import WebhookManager from './WebhookManager';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,6 +49,7 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
         project: { select: { id: true, name: true } },
         task: { select: { id: true, title: true, project: { select: { name: true } } } },
         leadLinks: { where: { kind: 'LEAD' }, include: { lead: { select: { id: true, name: true } } } },
+        webhook: { select: { id: true, name: true } },
       },
     }),
     db.project.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' }, take: 200 }),
@@ -66,7 +68,10 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
           <h2>File storage</h2>
           <div className="sub">Max 10 MB. One home (Library / Project / Task) + any number of linked companies.</div>
         </div>
-        <FileUploader projects={projects} />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <WebhookManager />
+          <FileUploader projects={projects} />
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
@@ -88,11 +93,11 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
       <div className="tablewrap">
         <table className="table">
           <thead>
-            <tr><th>File</th><th>Size</th><th>Type</th><th>Used in</th><th>Uploaded</th><th>Actions</th></tr>
+            <tr><th>File</th><th>Size</th><th>Type</th><th>Used in</th><th>Source</th><th>Uploaded</th><th>Actions</th></tr>
           </thead>
           <tbody>
             {files.length === 0 ? (
-              <tr><td colSpan={6} className="empty">{query ? 'No files match your search.' : 'No files in this view yet.'}</td></tr>
+              <tr><td colSpan={7} className="empty">{query ? 'No files match your search.' : 'No files in this view yet.'}</td></tr>
             ) : (
               files.map((f) => {
                 const homeLabel = f.task ? (f.task.project?.name ? `Task — ${f.task.title} · ${f.task.project.name}` : `Task — ${f.task.title}`)
@@ -118,10 +123,11 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
                         </div>
                       ) : null}
                     </td>
+                    <td>{f.webhook ? <span className="pill">{f.webhook.name}</span> : <span className="itemsub">Manual upload</span>}</td>
                     <td>{formatDate(f.createdAt)}</td>
                     <td style={{ display: 'flex', gap: 6 }}>
                       <a className="btn sq" href={`/api/files/${f.id}`} aria-label={`Download ${f.name}`}>↓</a>
-                      {isAdmin && f.mimeType === 'text/csv' ? <FileLeadImport assetId={f.id} fileName={f.name} /> : null}
+                      {isAdmin && (f.mimeType === 'text/csv' || /\.(xlsx|xls)$/i.test(f.name)) ? <FileLeadImport assetId={f.id} fileName={f.name} /> : null}
                       {isAdmin || f.uploadedById === userId ? (
                         <MoveAsset
                           assetId={f.id}
