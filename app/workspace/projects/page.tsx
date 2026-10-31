@@ -40,15 +40,28 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
 
   const [projects, leadList, owners, fileCounts] = await Promise.all([
     db.project.findMany({
-      where: query ? { OR: [{ name: { contains: query, mode: 'insensitive' } }, { clientName: { contains: query, mode: 'insensitive' } }] } : {},
+      where: query ? {
+        OR: [
+          { name: { contains: query, mode: 'insensitive' } },
+          { clientName: { contains: query, mode: 'insensitive' } },
+          { service: { contains: query, mode: 'insensitive' } },
+          { lead: { OR: [{ leadCode: { contains: query, mode: 'insensitive' } }, { name: { contains: query, mode: 'insensitive' } }] } },
+          { owner: { name: { contains: query, mode: 'insensitive' } } },
+        ],
+      } : {},
       orderBy: [{ status: 'asc' }, { dueDate: { sort: 'asc', nulls: 'last' } }],
-      include: { owner: { select: { name: true } }, lead: { select: { leadCode: true } } },
+      include: { owner: { select: { name: true } }, lead: { select: { leadCode: true, name: true } } },
     }),
     db.lead.findMany({ select: { id: true, leadCode: true, name: true }, orderBy: { name: 'asc' } }),
     db.user.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     db.fileAsset.groupBy({ by: ['projectId'], _count: { _all: true }, where: { projectId: { not: null } } }),
   ]);
   const filesByProject = new Map(fileCounts.map((g) => [g.projectId, g._count._all] as const));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const overdueCount = projects.filter((p) => p.dueDate && p.dueDate < today && p.status !== 'COMPLETED' && p.status !== 'DELIVERED').length;
+  const activeCount = projects.filter((p) => p.status !== 'COMPLETED' && p.status !== 'DELIVERED').length;
+  const totalBudget = projects.reduce((sum, p) => sum + p.budget, 0);
 
   return (
     <>
@@ -62,9 +75,17 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
             title="New project"
             trigger="＋ New project"
             action={createProject}
+            description="Link the project to a lead when possible so tasks, files, and delivery activity stay connected."
             fields={projectFields(leadList, owners).filter((f) => f.name !== 'id')}
           />
         ) : null}
+      </div>
+
+      <div className="project-summary" aria-label="Project summary">
+        <div className="project-summary-card"><span>Visible projects</span><strong>{projects.length}</strong><small>{query ? 'Matching your search' : 'Across the delivery board'}</small></div>
+        <div className="project-summary-card"><span>Active delivery</span><strong>{activeCount}</strong><small>Planning through review</small></div>
+        <div className={`project-summary-card${overdueCount ? ' warning' : ''}`}><span>Needs attention</span><strong>{overdueCount}</strong><small>{overdueCount ? 'Past due date' : 'No overdue projects'}</small></div>
+        <div className="project-summary-card"><span>Visible budget</span><strong>{formatMoney(totalBudget)}</strong><small>Combined project value</small></div>
       </div>
 
       <div className="tablewrap">
@@ -79,7 +100,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
               projects.map((p) => (
                 <tr key={p.id}>
                   <td><strong>{p.name}</strong><div className="itemsub">{p.service}</div></td>
-                  <td>{p.clientName}{p.lead ? <div className="itemsub"><a href={`/workspace/leads?lead=${encodeURIComponent(p.lead.leadCode)}`} style={{ color: 'var(--purple)' }}>{p.lead.leadCode}</a></div> : null}</td>
+                  <td>{p.clientName}{p.lead ? <div className="itemsub"><a href={`/workspace/leads?lead=${encodeURIComponent(p.lead.leadCode)}`} style={{ color: 'var(--purple)' }} title={`Open ${p.lead.name}`}>{p.lead.leadCode} · {p.lead.name}</a></div> : <div className="itemsub">No lead linked</div>}</td>
                   <td>{p.owner?.name ?? '—'}</td>
                   <td>
                     {isAdmin ? (
@@ -94,12 +115,15 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
                     ) : <span className="pill">{labelize(p.status)}</span>}
                   </td>
                   <td>
-                    <div className="track" style={{ width: 90, display: 'inline-block' }}>
+                    <div className="track" style={{ width: 90, display: 'inline-block' }} role="progressbar" aria-label={`${p.name} progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={p.progress}>
                       <div className="fill" style={{ width: `${p.progress}%`, background: progressTone(p.progress) }} />
                     </div>
                     <small style={{ marginLeft: 6, color: 'var(--muted)' }}>{p.progress}%</small>
                   </td>
-                  <td>{formatDate(p.dueDate)}</td>
+                  <td className={p.dueDate && p.dueDate < today && p.status !== 'COMPLETED' && p.status !== 'DELIVERED' ? 'project-overdue' : undefined}>
+                    {formatDate(p.dueDate)}
+                    {p.dueDate && p.dueDate < today && p.status !== 'COMPLETED' && p.status !== 'DELIVERED' ? <div className="itemsub">Overdue</div> : null}
+                  </td>
                   <td>{formatMoney(p.budget)}</td>
                   <td style={{ display: 'flex', gap: 6 }}>
                     {(filesByProject.get(p.id) ?? 0) > 0 ? (

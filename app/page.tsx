@@ -37,6 +37,7 @@ function Nav() {
   const [open, setOpen] = useState(false);
   const { sky, away } = useNavFlight();
   const cls = `topbar${sky ? ' sky' : ''}${away ? ' away' : ''}`;
+  const closeMenu = () => setOpen(false);
   return (
     <header className={cls} aria-label="Main navigation">
       <div className="container nav">
@@ -60,12 +61,12 @@ function Nav() {
           </button>
         </div>
         <nav id="mobileMenu" className={`mobile-menu${open ? ' open' : ''}`} aria-label="Mobile">
-          <a href="#platform">Platform</a>
-          <a href="#how">How it works</a>
-          <a href="#pricing">Pricing</a>
-          <a href="#customers">Customers</a>
-          <a href="/login">Client Portal</a>
-          <a href="#contact">Start Free →</a>
+          <a href="#platform" onClick={closeMenu}>Platform</a>
+          <a href="#how" onClick={closeMenu}>How it works</a>
+          <a href="#pricing" onClick={closeMenu}>Pricing</a>
+          <a href="#customers" onClick={closeMenu}>Customers</a>
+          <a href="/login" onClick={closeMenu}>Client Portal</a>
+          <a href="#contact" onClick={closeMenu}>Start Free →</a>
         </nav>
       </div>
     </header>
@@ -225,7 +226,6 @@ function Workflow() {
     const el = sectionRef.current;
     if (!el) return;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      el.querySelectorAll('.board').forEach((b) => b.classList.remove('gone'));
       return;
     }
     let ticking = false;
