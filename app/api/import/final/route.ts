@@ -81,6 +81,15 @@ async function postImport(req: NextRequest) {
   if (assetId) {
     const existingDataset = await db.leadDataset.findUnique({ where: { fileAssetId: assetId }, select: { id: true } });
     if (existingDataset) {
+      const datasetLeads = await db.lead.findMany({ where: { datasetId: existingDataset.id }, select: { id: true } });
+      const linked = await db.fileLeadLink.findMany({ where: { fileAssetId: assetId, kind: 'LEAD' }, select: { leadId: true } });
+      const linkedIds = new Set(linked.map((link) => link.leadId));
+      const missing = datasetLeads.filter((lead) => !linkedIds.has(lead.id));
+      if (missing.length) {
+        await db.fileLeadLink.createMany({
+          data: missing.map((lead) => ({ kind: 'LEAD', leadId: lead.id, fileAssetId: assetId! })),
+        });
+      }
       await db.leadWorkspaceState.upsert({
         where: { userId },
         create: { userId, activeDatasetId: existingDataset.id },

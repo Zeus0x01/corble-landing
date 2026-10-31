@@ -54,7 +54,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
     db.lead.findMany({
       where: { ...(activeDatasetId ? { datasetId: activeDatasetId } : {}), ...(query ? { OR: [{ name: { contains: query, mode: 'insensitive' } }, { leadCode: { contains: query, mode: 'insensitive' } }, { contactPerson: { contains: query, mode: 'insensitive' } }, { service: { contains: query, mode: 'insensitive' } }, { email: { contains: query, mode: 'insensitive' } }] } : {}) },
       orderBy: [{ nextFollowUp: { sort: 'asc', nulls: 'last' } }, { createdAt: 'desc' }],
-      include: { owner: { select: { id: true, name: true } }, fileLinks: { select: { id: true } }, projects: { select: { id: true, name: true } }, tasks: { select: { id: true, title: true } }, _count: { select: { projects: true } } },
+      include: { owner: { select: { id: true, name: true } }, dataset: { select: { fileAsset: { select: { name: true } } } }, fileLinks: { select: { id: true } }, projects: { select: { id: true, name: true } }, tasks: { select: { id: true, title: true } }, _count: { select: { projects: true } } },
     }),
     db.fileLeadLink.groupBy({ by: ['leadId'], _count: { _all: true }, where: { kind: 'LEAD', ...(activeDatasetId ? { fileAsset: { leadDataset: { id: activeDatasetId } } } : {}) } }),
   ]);
@@ -75,6 +75,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
     <><a href={`/workspace/leads?lead=${encodeURIComponent(l.leadCode)}`} style={{ color: 'var(--purple)' }}>{l.leadCode}</a><LeadCodeCopy code={l.leadCode} /></>,
     <>
         <strong>{l.name}</strong>
+      {l.dataset?.fileAsset.name ? <div className="itemsub" title={`Imported from ${l.dataset.fileAsset.name}`}>File: {l.dataset.fileAsset.name}</div> : null}
       {l.contactPerson && l.contactPerson !== l.phone && l.contactPerson !== l.email ? <div className="itemsub">{l.contactPerson}</div> : null}
       </>,
     <>
