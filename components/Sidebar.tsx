@@ -31,7 +31,6 @@ const GROUPS: Group[] = [
     title: 'Growth',
     items: [
       { href: '/workspace/leads', icon: '◆', label: 'Leads / CRM (Final)' },
-      { href: '/workspace/leads/incoming', icon: '▤', label: 'Incoming Leads' },
       { href: '/workspace/finance', icon: '₪', label: 'Finance' },
     ],
   },
