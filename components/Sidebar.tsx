@@ -90,6 +90,7 @@ export default function Sidebar({ role }: { role: string }) {
       <div className="status" role="status">
         <span className="dot" aria-hidden="true" />
         <span style={{ fontSize: 12.5 }}>Workspace online</span>
+        <span className="status-role">{isAdmin ? 'Admin' : 'Member'}</span>
       </div>
       <nav className="nav" aria-label="Workspace sections" id="wsnav">
         {GROUPS.map((group) => {

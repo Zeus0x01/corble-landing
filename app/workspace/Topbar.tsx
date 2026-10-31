@@ -48,7 +48,19 @@ export default function Topbar({ pathname, user, companyName, currency, onToggle
 
   useEffect(() => {
     setSidebarOpen(false);
+    setQ(new URLSearchParams(window.location.search).get('q') ?? '');
   }, [pathname]);
+
+  useEffect(() => {
+    const onShortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        document.getElementById('globalSearch')?.focus();
+      }
+    };
+    window.addEventListener('keydown', onShortcut);
+    return () => window.removeEventListener('keydown', onShortcut);
+  }, []);
 
   useEffect(() => {
     const sidebar = document.getElementById('sidebar');
@@ -121,6 +133,7 @@ export default function Topbar({ pathname, user, companyName, currency, onToggle
             value={q}
             onChange={(e) => onSearch(e.target.value)}
           />
+          {q ? <button type="button" className="search-clear" onClick={() => onSearch('')} aria-label="Clear search">×</button> : <kbd>⌘K</kbd>}
         </label>
         <Link href="/workspace/notifications" className="btn sq" aria-label="Notifications" title="Notifications">
           ◉
